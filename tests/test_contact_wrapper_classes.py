@@ -2,14 +2,16 @@ __doc__ = """ Test Wrapper Classes used in contact in Elastica.joint implementat
 
 import numpy as np
 from numpy.testing import assert_allclose
-from elastica.joint import ExternalContact, SelfContact
+from elastica.contact_forces import ExternalContact, SelfContact
+from elastica.rod import RodBase
+from elastica.rigidbody import RigidBodyBase, Cylinder, Sphere
 
 
 def mock_rod_init(self):
 
     "Initializing Rod"
 
-    self.n_elems = 2
+    self.n_elems = 5
     self.position_collection = np.array(
         [[1, 2, 3, 4, 5], [6, 7, 8, 9, 10], [11, 12, 13, 14, 15]]
     )
@@ -48,7 +50,7 @@ def mock_rod_init(self):
     )
 
 
-def mock_rigid_body_init(self):
+def mock_cylinder_init(self):
 
     "Initializing Rigid Body"
 
@@ -70,20 +72,21 @@ def mock_rigid_body_init(self):
     )
 
 
-MockRod = type("MockRod", (object,), {"__init__": mock_rod_init})
+MockRod = type("MockRod", (RodBase,), {"__init__": mock_rod_init})
 
-MockRigidBody = type("MockRigidBody", (object,), {"__init__": mock_rigid_body_init})
+MockCylinder = type("MockCylinder", (Cylinder,), {"__init__": mock_cylinder_init})
 
 
-def test_external_contact_rod_rigid_body_with_collision():
+def test_external_contact_rod_cylinder_with_collision():
 
     "Testing External Contact wrapper with Collision with analytical verified values"
 
     tol = 1e-6
     mock_rod = MockRod()
-    mock_rigid_body = MockRigidBody()
+    mock_cylinder = MockCylinder()
     ext_contact = ExternalContact(k=1.0, nu=0.5)
-    ext_contact.apply_forces(mock_rod, 0, mock_rigid_body, 1)
+    ext_contact._generate_contact_function(mock_rod, mock_cylinder)
+    ext_contact.apply_contact(mock_rod, mock_cylinder)
 
     assert_allclose(
         mock_rod.external_forces,
@@ -99,46 +102,49 @@ def test_external_contact_rod_rigid_body_with_collision():
     )
 
     assert_allclose(
-        mock_rigid_body.external_forces,
+        mock_cylinder.external_forces,
         np.array([[0.379174], [0.026334], [0.382586]]),
         rtol=tol,
         atol=tol,
     )
 
     assert_allclose(
-        mock_rigid_body.external_torques,
+        mock_cylinder.external_torques,
         np.array([[-2.092858], [0.245406], [0.310859]]),
         rtol=tol,
         atol=tol,
     )
 
 
-def test_external_contact_rod_rigid_body_without_collision():
+def test_external_contact_rod_cylinder_without_collision():
 
     "Testing External Contact wrapper without Collision with analytical verified values"
 
     mock_rod = MockRod()
-    mock_rigid_body = MockRigidBody()
+    mock_cylinder = MockCylinder()
     ext_contact = ExternalContact(k=1.0, nu=0.5)
-    mock_rigid_body.position_collection = np.array([[400], [500], [600]])
+    mock_cylinder.position_collection = np.array([[400], [500], [600]])
     mock_rod_external_forces_before_execution = mock_rod.external_forces.copy()
-    mock_rigid_body_external_forces_before_execution = (
-        mock_rigid_body.external_forces.copy()
+    mock_cylinder_external_forces_before_execution = (
+        mock_cylinder.external_forces.copy()
     )
     mock_rigid_body_external_torques_before_execution = (
-        mock_rigid_body.external_torques.copy()
+        mock_cylinder.external_torques.copy()
     )
-    ext_contact.apply_forces(mock_rod, 0, mock_rigid_body, 1)
+    ext_contact._generate_contact_function(mock_rod, mock_cylinder)
+    ext_contact.apply_contact(mock_rod, mock_cylinder)
 
     assert_allclose(mock_rod.external_forces, mock_rod_external_forces_before_execution)
     assert_allclose(
-        mock_rigid_body.external_forces,
-        mock_rigid_body_external_forces_before_execution,
+        mock_cylinder.external_forces, mock_cylinder_external_forces_before_execution
     )
     assert_allclose(
-        mock_rigid_body.external_torques,
+        mock_cylinder.external_torques,
         mock_rigid_body_external_torques_before_execution,
     )
+
+
+test_external_contact_rod_cylinder_without_collision()
 
 
 def test_external_contact_with_two_rods_with_collision():
@@ -152,7 +158,8 @@ def test_external_contact_with_two_rods_with_collision():
         [[1.2, 2.2, 3.2, 4.2, 5.2], [6, 7, 8, 9, 10], [11, 12, 13, 14, 15]]
     )
     ext_contact = ExternalContact(k=1.0, nu=0.5)
-    ext_contact.apply_forces(mock_rod_one, 0, mock_rod_two, 0)
+    ext_contact._generate_contact_function(mock_rod_one, mock_rod_two)
+    ext_contact.apply_contact(mock_rod_one, mock_rod_two)
 
     assert_allclose(
         mock_rod_one.external_forces,
@@ -198,7 +205,8 @@ def test_external_contact_with_two_rods_without_collision():
     ext_contact = ExternalContact(k=1.0, nu=0.5)
     mock_rod_one_external_forces_before_execution = mock_rod_one.external_forces.copy()
     mock_rod_two_external_forces_before_execution = mock_rod_two.external_forces.copy()
-    ext_contact.apply_forces(mock_rod_one, 0, mock_rod_two, 0)
+    ext_contact._generate_contact_function(mock_rod_one, mock_rod_two)
+    ext_contact.apply_contact(mock_rod_one, mock_rod_two)
 
     assert_allclose(
         mock_rod_one.external_forces,
@@ -221,8 +229,9 @@ def test_self_contact_with_rod_self_collision():
 
     tol = 1e-6
     mock_rod = MockRod()
-    sel_contact = SelfContact(k=1.0, nu=0.5)
-    sel_contact.apply_forces(mock_rod, 0, mock_rod, 0)
+    self_contact = SelfContact(k=1.0, nu=0.5)
+    self_contact._generate_contact_function(mock_rod, mock_rod)
+    self_contact.apply_contact(mock_rod, mock_rod)
 
     assert_allclose(
         mock_rod.external_forces,
@@ -247,8 +256,9 @@ def test_self_contact_with_rod_no_self_collision():
     mock_rod.position_collection = np.array(
         [[1, 3, 5, 7, 9], [11, 13, 15, 17, 19], [21, 23, 25, 27, 29]]
     )
-    sel_contact = SelfContact(k=1.0, nu=0.5)
-    sel_contact.apply_forces(mock_rod, 0, mock_rod, 0)
+    self_contact = SelfContact(k=1.0, nu=0.5)
+    self_contact._generate_contact_function(mock_rod, mock_rod)
+    self_contact.apply_contact(mock_rod, mock_rod)
 
     assert_allclose(
         mock_rod.external_forces,

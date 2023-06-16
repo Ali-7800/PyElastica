@@ -4,12 +4,12 @@ __doc__ = (
 
 import numpy as np
 from numpy.testing import assert_allclose
-from elastica.joint import (
-    _prune_using_aabbs_rod_rigid_body,
+from elastica.contact_forces_calc import (
+    _prune_using_aabbs_rod_cylinder,
     _prune_using_aabbs_rod_rod,
-    _calculate_contact_forces_rod_rigid_body,
+    _calculate_contact_forces_rod_cylinder,
     _calculate_contact_forces_rod_rod,
-    _calculate_contact_forces_self_rod,
+    _calculate_contact_forces_self_rod_numba,
 )
 
 
@@ -30,7 +30,7 @@ def test_prune_using_aabbs_rod_rigid_body():
     cylinder_radius = 1.5
     cylinder_length = 5.0
     assert (
-        _prune_using_aabbs_rod_rigid_body(
+        _prune_using_aabbs_rod_cylinder(
             rod_one_position_collection,
             rod_one_radius_collection,
             rod_one_length_collection,
@@ -53,7 +53,7 @@ def test_prune_using_aabbs_rod_rigid_body():
     cylinder_radius = 1.5
     cylinder_length = 5.0
     assert (
-        _prune_using_aabbs_rod_rigid_body(
+        _prune_using_aabbs_rod_cylinder(
             rod_one_position_collection,
             rod_one_radius_collection,
             rod_one_length_collection,
@@ -111,7 +111,7 @@ def test_prune_using_aabbs_rod_rod():
     )
 
 
-def test_claculate_contact_forces_rod_rigid_body():
+def test_calculate_contact_forces_rod_calculate_contact_forces_rod_cylinder():
     "Function to test the calculate contact forces rod rigid body function"
 
     "Testing function with analytically verified values"
@@ -180,7 +180,7 @@ def test_claculate_contact_forces_rod_rigid_body():
     friction_coefficient = 0.2
 
     "Function call"
-    _calculate_contact_forces_rod_rigid_body(
+    _calculate_contact_forces_rod_cylinder(
         rod_element_position,
         rod_length_collection * rod_tangent_collection,
         cylinder_position[..., 0],
@@ -394,7 +394,7 @@ def test_calculate_contact_forces_self_rod():
     nu = 0.5
 
     "Function call"
-    _calculate_contact_forces_self_rod(
+    _calculate_contact_forces_self_rod_numba(
         rod_position_collection[..., :-1],
         rod_radius_collection,
         rod_length_collection,
