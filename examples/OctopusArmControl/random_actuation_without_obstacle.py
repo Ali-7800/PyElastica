@@ -1,7 +1,5 @@
 import numpy as np
-from elastica import *
 from octopus_arm import ArmEnvironment
-from callback_func import *
 from tqdm import tqdm
 
 
