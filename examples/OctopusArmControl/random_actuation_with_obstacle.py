@@ -53,7 +53,7 @@ class Environment(ArmEnvironment):
 def main(filename, target_position=None):
 
     """Create simulation environment"""
-    final_time = 20.0
+    final_time = 15.0
     env = Environment(final_time)
     total_steps, systems = env.reset()
 
