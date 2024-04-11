@@ -155,6 +155,7 @@ class SuckerForce(NoForces):
         force = (
             -factor * self.k * (system.position_collection[..., -1] - self.fixed_pos)
         )
+        print(force)
         system.external_forces[..., -1] += force
         self.sucker_time += 0.001
 
@@ -409,185 +410,6 @@ class ArmSimulator:
             gamma=0.1,
         )
 
-    def manipulation_reset(
-        self, rod_start_list, ball_start, ball_vel=[0.0, 0.0], obstacle_start=None
-    ):
-        """Reset parameters"""
-        self.u = np.zeros([self.n_arm, self.n_muscle, self.n_elem + 1])
-        # self.arm_states[...] = 0.0
-        self.head_list = None
-
-        """ Set up arm simulator """
-        self.one_arm_fixed_sim = OneArmSimulator()
-        self.one_arm_fixed_sim.append(self.mesh_surface)
-        self.shearable_rods = []
-        for i_arm in range(self.n_arm):
-            R = x_rotation(self.angle_list[i_arm])
-            rod_start = rod_start_list[i_arm]
-            rod = CosseratRod.straight_rod(
-                self.n_elem,
-                self.start,
-                self.direction,
-                self.normal,
-                self.base_length,
-                self.base_radius,
-                self.density,
-                # 0.0,  # self.dissipation,
-                youngs_modulus=self.E,
-                shear_modulus=self.E / (1 + self.poisson_ratio),
-                position=R @ rod_start["pos"] + self.start[:, np.newaxis],
-                directors=R @ rod_start["dir"],
-            )
-
-            # rod.rest_lengths[...] = self.rest_lengths
-            # rod.rest_voronoi_lengths[...] = self.rest_voronoi_lengths
-            # rod.velocity_collection[...] = rod_start['vel']
-            # rod.omega_collection[...] = rod_start['omega']
-            self.shearable_rods.append(rod)
-            self.one_arm_fixed_sim.append(self.shearable_rods[-1])
-
-        """ Add damping """
-        for i_arm in range(self.n_arm):
-            self.add_damping(self.shearable_rods[i_arm])
-
-        """ Add ball (cylinder)"""
-        if ball_start is not None:
-            cylinder_length = 0.015  # 0.4 * self.base_length
-            self.cylinder = Cylinder(
-                start=np.array([ball_start[0], ball_start[1], -0.5 * cylinder_length])
-                + self.start,
-                direction=np.array([0, 0, 1]),
-                normal=np.array([1, 0, 0]),
-                base_length=cylinder_length,
-                base_radius=0.05 * self.base_length,
-                density=750,
-            )
-
-            self.one_arm_fixed_sim.append(self.cylinder)
-
-            self.cylinder.velocity_collection[0] = ball_vel[0]
-            self.cylinder.velocity_collection[1] = ball_vel[1]
-
-            # self.one_arm_fixed_sim.add_forcing_to(self.cylinder).using(
-            #     RigidBodyDragForce,
-            #     self.fluid_param,
-            #     self.cylinder.n_elems,
-            #     self.cylinder_drag_coeff,
-            # )
-
-            sucker_k = 1e1
-            for i_arm in range(self.n_arm):
-                self.one_arm_fixed_sim.add_forcing_to(self.shearable_rods[i_arm]).using(
-                    SuckerForce,
-                    sucker=self.sucker_control[i_arm, :],
-                    n_p=self.sucker_fixed_position[i_arm, :],
-                    n_d=self.sucker_fixed_director[i_arm, ...],
-                    k=sucker_k,
-                )
-
-            self.arm_ball_strike = np.full((self.n_arm, 1), False)
-            for i_arm in range(self.n_arm):
-                self.one_arm_fixed_sim.detect_contact_between(
-                    self.shearable_rods[i_arm], self.cylinder
-                ).using(
-                    RodCylinderContact,
-                    k=5e0,
-                    nu=1e-1,  # 1e2,  # , arm_ball_strike=self.arm_ball_strike[i_arm, :]
-                    # velocity_damping_coefficient=0.83*0.65, friction_coefficient=0.65
-                    #     http://sssa.bioroboticsinstitute.it/sites/default/files/user_docs/LM2014_CalistiCorucci_BipedalWalking.pdf
-                )
-
-        """ Add obstacle """
-        if self.obstacle:
-            self.cylinder_obs = Cylinder(
-                start=np.array([obstacle_start[0], obstacle_start[1], 0.0]),
-                direction=np.array([0, 1, 0]),
-                normal=np.array([1, 0, 0]),
-                base_length=1.0 * self.base_length,
-                base_radius=self.obstacle_radius,
-                density=200,
-            )
-
-            self.one_arm_fixed_sim.append(self.cylinder_obs)
-
-        """  Add callbacks """
-        if self.callback:
-            self.pp_lists = []
-            for i_arm in range(self.n_arm):
-                pp_list = defaultdict(list)
-                self.pp_lists.append(pp_list)
-                self.one_arm_fixed_sim.collect_diagnostics(
-                    self.shearable_rods[i_arm]
-                ).using(
-                    ArmCallBack,
-                    step_skip=self.step_skip,
-                    callback_params=self.pp_lists[-1],
-                )
-            if ball_start is not None:
-                self.ball_list = defaultdict(list)
-                self.one_arm_fixed_sim.collect_diagnostics(self.cylinder).using(
-                    BallCallBack,
-                    step_skip=self.step_skip,
-                    callback_params=self.ball_list,
-                    radius=self.cylinder.radius,
-                )
-
-        """  Add fluid drag forces """
-        # for i_arm in range(self.n_arm):
-        #     self.one_arm_fixed_sim.add_forcing_to(self.shearable_rods[i_arm]).using(
-        #         DragForce,
-        #         rho_environment=self.rho_water,
-        #         c_per=self.c_per,
-        #         c_tan=self.c_tan,
-        #         system=self.shearable_rods[i_arm],
-        #         step_skip=self.step_skip,
-        #         callback_params=self.pp_lists[i_arm],  # self.rod_parameters_dict
-        # )
-        """ Create a continuous muscle model """
-        # muscle = ContinuousActuation(self.n_elem, self.muscle_fiber)
-        for i_arm in range(self.n_arm):
-            self.muscle_groups.append(
-                self.set_muscles(self.base_radius, self.shearable_rods[i_arm])
-            )
-            self.muscle_callback_params_list.append(
-                [defaultdict(list) for _ in self.muscle_groups]
-            )
-            self.one_arm_fixed_sim.add_forcing_to(self.shearable_rods[i_arm]).using(
-                ApplyMuscleGroups,
-                muscle_groups=self.muscle_groups[i_arm],
-                step_skip=self.step_skip,
-                callback_params_list=self.muscle_callback_params_list[i_arm],
-            )
-        #     self.one_arm_fixed_sim.add_forcing_to(self.shearable_rods[i_arm]).using(
-        #         SensoryMuscleCtrl,
-        #         self.u[i_arm],
-        #         muscle,
-        #         # target,
-        #         # shoot_angle,
-        #         # shear_matrix,
-        #         # bend_matrix,
-        #         ramp_up_time=0.5,
-        #     )
-
-        """Add arm mesh surface contact"""
-        for i_arm in range(self.n_arm):
-            self.set_mesh_surface_arm_contact(self.shearable_rods[i_arm])
-
-        """  Finalize """
-        self.one_arm_fixed_sim.finalize()
-        for i_arm in range(self.n_arm):
-            self.compute_strains(self.shearable_rods[i_arm])
-
-        self.do_step, self.stages_and_updates = extend_stepper_interface(
-            self.timestepper, self.one_arm_fixed_sim
-        )
-        # if self.state_type == 'pos':
-        #     self.pos[...] = [rod.position_collection[:2, 1:].flatten() for rod in self.shearable_rods]
-        #     self.prev_pos[...] = rod_start['prev_pos']
-        # else:
-        #     self.kappa[...] = [rod.kappa[0] for rod in self.shearable_rods]
-        #     self.prev_kappa[...] = rod_start['prev_kappa']
-
     def compute_strains(self, rod):
         _compute_shear_stretch_strains(
             rod.position_collection,
@@ -727,17 +549,16 @@ class ArmSimulator:
                 3,
             )
         )
-        # for i_arm in range(self.n_arm):
-        #     self.one_arm_fixed_sim.connect(self.shearable_rods[i_arm], self.cylinder).using(
-        #         ExternalContact_sucker, k=0.0025, nu=0.1, sucker_flag=self.sucker_control[i_arm, :]
-        #     )
-        # for i_arm in range(self.n_arm):
-        #     self.one_arm_fixed_sim.constrain(self.shearable_rods[i_arm]).using(
-        #         SuckerFixedBC, constrained_position_idx=(-1,), constrained_director_idx=(-1,),
-        #         sucker=self.sucker_control[i_arm, :],
-        #         n_p=self.sucker_fixed_position[i_arm, :],
-        #         n_d=self.sucker_fixed_director[i_arm, ...],
-        #     )
+
+        sucker_k = 1e1
+        for i_arm in range(self.n_arm):
+            self.one_arm_fixed_sim.add_forcing_to(self.shearable_rods[i_arm]).using(
+                SuckerForce,
+                sucker=self.sucker_control[i_arm, :],
+                n_p=self.sucker_fixed_position[i_arm, :],
+                n_d=self.sucker_fixed_director[i_arm, ...],
+                k=sucker_k,
+            )
 
         """ Add damping """
         for i_arm in range(self.n_arm):

@@ -12,6 +12,8 @@ from elastica.rigidbody.rigid_body import RigidBodyBase
 from elastica.rigidbody.cylinder import Cylinder
 from elastica.rigidbody.sphere import Sphere
 from elastica.surface.plane import Plane
+from elastica.surface.mesh_surface import MeshSurface
+from elastica.mesh.mesh_initializer import Mesh
 from elastica.boundary_conditions import (
     ConstraintBase,
     FreeBC,

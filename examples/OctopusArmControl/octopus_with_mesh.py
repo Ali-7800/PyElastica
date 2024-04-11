@@ -14,7 +14,7 @@ env_config = {
     "n_elem": 100,
     "node_skip": 9,
     "n_muscle": 2,
-    "final_time": 10,
+    "final_time": 1,
     "arm_dt": 2.0e-4,
     "step_skip": 250,  # int(1.0 / (self.fps * self.arm_dt))
     "arm_c_per": 1.013,
@@ -45,13 +45,21 @@ def main(filename):
         current_muscle_groups = env.muscle_groups[i_arm]
         for m in range(len(current_muscle_groups)):
             activations.append(np.zeros(current_muscle_groups[m].activation.shape))
-        for m in [5]:
-            activations[m] = 0.1 * np.random.rand(
-                *current_muscle_groups[m].activation.shape
-            )
-        activations[4] = np.linspace(1, 0, *current_muscle_groups[4].activation.shape)
+        if i_arm == 0:
+            for m in [0]:
+                activations[m] = 0.1 * np.random.rand(
+                    *current_muscle_groups[m].activation.shape
+                )
+            # activations[4] = np.linspace(1, 0, *current_muscle_groups[4].activation.shape)
         activations_octopus.append(activations)
 
+    env.sucker_control[0] = True
+    env.sucker_fixed_position[0, ...] = env.shearable_rods[0].position_collection[
+        ..., -1
+    ]
+    env.sucker_fixed_director[0, ...] = env.shearable_rods[0].director_collection[
+        ..., -1
+    ]
     for k_sim in tqdm(range(total_steps)):
         time, systems, done = env.step(time, activations_octopus)
         # if np.linalg.norm(env.shearable_rod.velocity_collection[:, -1]) < 1e-4 or done:

@@ -63,7 +63,7 @@ class DragForce(NoForces):
         self.every = step_skip
         self.callback_params = callback_params
 
-    def apply_torques(self, system, time: np.float = 0.0):
+    def apply_torques(self, system, time: np.float64 = 0.0):
         Pa = 2 * system.radius * system.lengths
         Sa = Pa * np.pi
 
