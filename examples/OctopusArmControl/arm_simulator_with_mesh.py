@@ -1,6 +1,7 @@
 import numpy as np
 from elastica import *
 from elastica.contact_forces import RodCylinderContact
+from elastica.external_forces import NoForces
 from drag_force import DragForce
 from elastica.rod.cosserat_rod import (
     _compute_shear_stretch_strains,
@@ -135,6 +136,27 @@ class HeadCallBack(CallBackBaseClass):
             self.callback_params["radius"].append(system.radius.copy())
             self.callback_params["com"].append(system.compute_position_center_of_mass())
         return
+
+
+class SuckerForce(NoForces):
+    def __init__(self, sucker, n_p, n_d, k):
+        self.sucker = sucker
+        self.fixed_pos = n_p
+        self.fixed_dir = n_d
+        self.k = k
+        self.sucker_time = 0.0
+
+    def apply_forces(self, system, time=0.0):
+        if not self.sucker:
+            self.sucker_time = 0.0
+            return
+        factor = min(1.0, self.sucker_time)
+        # Update external forces
+        force = (
+            -factor * self.k * (system.position_collection[..., -1] - self.fixed_pos)
+        )
+        system.external_forces[..., -1] += force
+        self.sucker_time += 0.001
 
 
 class OneArmSimulator(
@@ -453,12 +475,15 @@ class ArmSimulator:
             #     self.cylinder_drag_coeff,
             # )
 
-            # if self.sucker:
-            #     self.sucker_control = np.full((self.n_arm, 1), False)
-            #     for i_arm in range(self.n_arm):
-            #         self.one_arm_fixed_sim.connect(self.shearable_rods[i_arm], self.cylinder).using(
-            #             ExternalContact_sucker, k=0.0025 / 2, nu=0.0, sucker_flag=self.sucker_control[i_arm, :]
-            #         )
+            sucker_k = 1e1
+            for i_arm in range(self.n_arm):
+                self.one_arm_fixed_sim.add_forcing_to(self.shearable_rods[i_arm]).using(
+                    SuckerForce,
+                    sucker=self.sucker_control[i_arm, :],
+                    n_p=self.sucker_fixed_position[i_arm, :],
+                    n_d=self.sucker_fixed_director[i_arm, ...],
+                    k=sucker_k,
+                )
 
             self.arm_ball_strike = np.full((self.n_arm, 1), False)
             for i_arm in range(self.n_arm):
