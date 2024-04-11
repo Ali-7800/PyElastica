@@ -1,0 +1,24 @@
+task:
+  do_train: True
+  data_dir: "dev_results" #"0410_no_reset_train_weights_only/target_dev_total0.5_reward-0.1_noBonus_contFromReset_weightsScratch" # "0410_8arm_no_reset/batch6400"
+  continue_training: False
+train:
+  steps_per_epoch: 200  #4000
+  epochs: 20000
+  policy_lr: 3.0e-4
+  critic_lr: 5.0e-4
+  batch_size: 6400
+env:
+  env_name: "locomotion"
+  num_envs: 3
+  num_arms: 4
+  base_length: 0.2
+  arm_state_dim: 11
+  n_elem: 100
+  node_skip: 9
+  n_muscle: 2
+  arm_dt: 2.0e-4
+  step_skip: 250 # int(1.0 / (self.fps * self.arm_dt))
+  arm_c_per: 1.013
+  arm_c_tan: 0.0256
+  target_radius: 0.02 #0.02 #0.1
