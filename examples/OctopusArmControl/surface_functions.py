@@ -391,51 +391,68 @@ def create_surface_from_parameterization(
 
 @njit(cache=True)
 def surface_grid_numba(
-    facets, grid_size, facet_x_left, facet_x_right, facet_y_down, facet_y_up
+    faces, grid_size, face_x_left, face_x_right, face_y_down, face_y_up
 ):
-    x_min = np.min(facets[0, :, :])
-    y_min = np.min(facets[1, :, :])
-    n_x_positions = int(np.ceil((np.max(facets[0, :, :]) - x_min) / grid_size))
-    n_y_positions = int(np.ceil((np.max(facets[1, :, :]) - y_min) / grid_size))
-    facets_grid = dict()
+    x_min = np.min(faces[0, :, :])  # grid x zero position
+    y_min = np.min(faces[1, :, :])  # grid y zero position
+    n_x_positions = int(
+        np.ceil((np.max(faces[0, :, :]) - x_min) / grid_size)
+    )  # number of grid sizes that fit in x direction
+    n_y_positions = int(
+        np.ceil((np.max(faces[1, :, :]) - y_min) / grid_size)
+    )  # number of grid sizes that fit in y direction
+    faces_grid = dict()
     for i in range(n_x_positions):
-        x_left = x_min + (i * grid_size)
-        x_right = x_min + ((i + 1) * grid_size)
+        x_left = x_min + (i * grid_size)  # current grid square left x coordinate
+        x_right = x_min + (
+            (i + 1) * grid_size
+        )  # current grid square right x coordinate
         for j in range(n_y_positions):
-            y_down = y_min + (j * grid_size)
-            y_up = y_min + ((j + 1) * grid_size)
-            if np.any(
-                np.where(
-                    (
-                        (facet_y_down > y_up)
-                        + (facet_y_up < y_down)
-                        + (facet_x_right < x_left)
-                        + (facet_x_left > x_right)
-                    )
-                    == 0
-                )[0]
+            y_down = y_min + (j * grid_size)  # current grid square down y coordinate
+            y_up = y_min + ((j + 1) * grid_size)  # current grid square up y coordinate
+            if (
+                len(
+                    np.where(
+                        (
+                            (
+                                face_y_down > y_up
+                            )  # if face_y_down coordinate is greater than grid square up position then face is above grid square
+                            + (
+                                face_y_up < y_down
+                            )  # if face_y_up coordinate is lower than grid square down position then face is below grid square
+                            + (
+                                face_x_right < x_left
+                            )  # if face_x_right coordinate is lower than grid square left position then face is to the left of the grid square
+                            + (
+                                face_x_left > x_right
+                            )  # if face_x_left coordinate is greater than grid square right position then face is to the right of the grid square
+                        )
+                        == 0  # if the face is not below, above, to the right of or, to the left of the grid then they must intersect
+                    )[0]
+                )
+                > 0
             ):
-                facets_grid[(i, j)] = np.where(
+                faces_grid[(i, j)] = np.where(
                     (
-                        (facet_y_down > y_up)
-                        + (facet_y_up < y_down)
-                        + (facet_x_right < x_left)
-                        + (facet_x_left > x_right)
+                        (face_y_down > y_up)
+                        + (face_y_up < y_down)
+                        + (face_x_right < x_left)
+                        + (face_x_left > x_right)
                     )
                     == 0
                 )[0]
-    return facets_grid
+    return faces_grid
 
 
-def surface_grid(facets, grid_size):
-    facet_x_left = np.min(facets[0, :, :], axis=0)
-    facet_y_down = np.min(facets[1, :, :], axis=0)
-    facet_x_right = np.max(facets[0, :, :], axis=0)
-    facet_y_up = np.max(facets[1, :, :], axis=0)
+def surface_grid(faces, grid_size):
+    face_x_left = np.min(faces[0, :, :], axis=0)
+    face_y_down = np.min(faces[1, :, :], axis=0)
+    face_x_right = np.max(faces[0, :, :], axis=0)
+    face_y_up = np.max(faces[1, :, :], axis=0)
     print("Creating Grid ...")
     facets_grid = dict(
         surface_grid_numba(
-            facets, grid_size, facet_x_left, facet_x_right, facet_y_down, facet_y_up
+            faces, grid_size, face_x_left, face_x_right, face_y_down, face_y_up
         )
     )
     print("Grid Created!")

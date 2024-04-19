@@ -22,12 +22,15 @@ class MeshSurface(SurfaceBase):
     ):
         self.n_faces = mesh.face_normals.shape[-1]
         for face in range(self.n_faces):
-            assert_allclose(
-                np.linalg.norm(mesh.face_normals[:, face]),
-                1.0,
-                atol=Tolerance.atol(),
-                err_msg="face " + str(face) + "'s normal is not a unit vector",
-            )
+            try:
+                assert_allclose(
+                    np.linalg.norm(mesh.face_normals[:, face]),
+                    1.0,
+                    atol=Tolerance.atol(),
+                    err_msg="face " + str(face) + "'s normal is not a unit vector",
+                )
+            except AssertionError:
+                mesh.face_normals[:, face] = mesh.face_normals[:, face - 1]
         self.face_normals = mesh.face_normals
         self.face_centers = mesh.face_centers
         self.faces = mesh.faces

@@ -145,6 +145,7 @@ class SuckerForce(NoForces):
         self.fixed_dir = n_d
         self.k = k
         self.sucker_time = 0.0
+        self.suction_index = -30
 
     def apply_forces(self, system, time=0.0):
         if not self.sucker:
@@ -153,10 +154,11 @@ class SuckerForce(NoForces):
         factor = min(1.0, self.sucker_time)
         # Update external forces
         force = (
-            -factor * self.k * (system.position_collection[..., -1] - self.fixed_pos)
+            -factor
+            * self.k
+            * (system.position_collection[..., self.suction_index] - self.fixed_pos)
         )
-        print(force)
-        system.external_forces[..., -1] += force
+        system.external_forces[..., self.suction_index] += force
         self.sucker_time += 0.001
 
 
@@ -172,7 +174,7 @@ class ArmSimulator:
         self.n_arm = env_config["num_arms"]
         self.callback = callback
         self.timestepper = PositionVerlet()
-        self.recording_fps = 30
+        self.recording_fps = 20
 
         """ Task """
         self.reset = (
@@ -238,21 +240,40 @@ class ArmSimulator:
         self.poisson_ratio = 1
 
         """ Mesh Surface """
-        mesh = Mesh(filepath=env_config["mesh_path"])
-        mesh.translate(-np.array(mesh.mesh_center))
-        mesh.translate(
-            -4 * radius_base - np.array([0, 0, np.min(mesh.face_centers[2])])
-        )
-        # mesh.visualize()
-        self.mesh_surface = MeshSurface(mesh)
+        if env_config["env_idx"] == 0:
+            self.mesh_surface = None
+            self.plane = Plane(
+                plane_normal=np.array([0.0, 0.0, 1.0]),
+                plane_origin=np.array([0.0, 0.0, -radius_base]),
+            )
+
+        elif env_config["env_idx"] == 1:
+            mesh = Mesh(filepath=r"m32_Viekoda_Bay/m32_Viekoda_Bay.obj")
+            mesh.translate(-np.array(mesh.mesh_center))
+            print(mesh.mesh_center)
+            mesh.translate(
+                -np.array([0, 0, 4 * radius_base + np.min(mesh.face_centers[2])])
+            )
+            self.mesh_surface = MeshSurface(mesh)
+            filename = "mars-landscape/grid_m32_Viekoda_Bay.dat"
+            with open(filename, "rb") as fptr:
+                self.faces_grid = pickle.load(fptr)
+
+        elif env_config["env_idx"] == 2:
+            mesh = Mesh(filepath=r"mars-landscape/model.obj")
+            mesh.translate(-np.array(mesh.mesh_center))
+            mesh.rotate(axis=np.array([1.0, 0.0, 0.0]), angle=90)
+            mesh.scale(np.array([10.0, 10.0, 10.0]) / np.max(mesh.mesh_scale))
+            mesh.translate(np.array([0.0, 0.0, 0.05]))
+            self.mesh_surface = MeshSurface(mesh)
+            filename = "mars-landscape/grid_mars-landscape.dat"
+            with open(filename, "rb") as fptr:
+                self.faces_grid = pickle.load(fptr)
 
         """ Set up contact between arm and mesh surface """
         self.gravitational_acc = -9.80665
-        mu = 0.4
+        mu = 0.1
         self.kinetic_mu_array = np.array([mu, mu, mu])  # [forward, backward, sideways]
-        filename = env_config["mesh_grid_path"]
-        with open(filename, "rb") as fptr:
-            self.faces_grid = pickle.load(fptr)
 
         """ Muscles """
         n_max = np.array([1, 1, -2])
@@ -397,18 +418,30 @@ class ArmSimulator:
             GravityForces, acc_gravity=np.array([0.0, 0.0, self.gravitational_acc])
         )
         static_mu_array = np.zeros(self.kinetic_mu_array.shape)
-        self.one_arm_fixed_sim.detect_contact_between(
-            shearable_rod, self.mesh_surface
-        ).using(
-            RodMeshSurfaceContactWithGrid,
-            k=1e1,
-            nu=1e-2,
-            slip_velocity_tol=1e-8,
-            static_mu_array=static_mu_array,
-            kinetic_mu_array=self.kinetic_mu_array,
-            faces_grid=self.faces_grid,
-            gamma=0.1,
-        )
+        if self.mesh_surface is not None:
+            self.one_arm_fixed_sim.detect_contact_between(
+                shearable_rod, self.mesh_surface
+            ).using(
+                RodMeshSurfaceContactWithGrid,
+                k=1e0,
+                nu=1e-2,
+                slip_velocity_tol=1e-8,
+                static_mu_array=static_mu_array,
+                kinetic_mu_array=self.kinetic_mu_array,
+                faces_grid=self.faces_grid,
+                gamma=0.1,
+            )
+        else:
+            self.one_arm_fixed_sim.detect_contact_between(
+                shearable_rod, self.plane
+            ).using(
+                RodPlaneContactWithAnisotropicFriction,
+                k=1e0,
+                nu=1e-2,
+                slip_velocity_tol=1e-8,
+                static_mu_array=static_mu_array,
+                kinetic_mu_array=self.kinetic_mu_array,
+            )
 
     def compute_strains(self, rod):
         _compute_shear_stretch_strains(
@@ -504,8 +537,8 @@ class ArmSimulator:
         self.body_rod = CosseratRod.straight_rod(
             n_elements=octopus_head_n_elems,
             start=self.start,
-            direction=-self.direction,
-            normal=self.normal,
+            direction=-self.normal,
+            normal=self.direction,
             base_length=octopus_head_length,
             base_radius=octopus_head_radius,
             density=self.density,
@@ -550,7 +583,7 @@ class ArmSimulator:
             )
         )
 
-        sucker_k = 1e1
+        sucker_k = 2e1
         for i_arm in range(self.n_arm):
             self.one_arm_fixed_sim.add_forcing_to(self.shearable_rods[i_arm]).using(
                 SuckerForce,
@@ -774,8 +807,8 @@ class ArmSimulator:
             filename,
             fps=self.recording_fps,
             step=1,
-            x_limits=(-0.25, 0.25),
-            y_limits=(-0.25, 0.25),
-            z_limits=(-0.25, 0.25),
+            x_limits=(-0.5, 0.5),
+            y_limits=(-0.5, 0.5),
+            z_limits=(-0.5, 0.5),
         )
         print("Plotting ... Done!")
