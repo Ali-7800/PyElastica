@@ -500,7 +500,10 @@ class ArmSimulator:
 
         """ Set up arm simulator """
         self.one_arm_fixed_sim = OneArmSimulator()
-        self.one_arm_fixed_sim.append(self.mesh_surface)
+        if self.mesh_surface is not None:
+            self.one_arm_fixed_sim.append(self.mesh_surface)
+        else:
+            self.one_arm_fixed_sim.append(self.plane)
         self.shearable_rods = []
 
         self.angle_list = (

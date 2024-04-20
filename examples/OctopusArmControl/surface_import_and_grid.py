@@ -10,7 +10,7 @@ from surface_functions import (
 
 n_elem = 100  # number of discretized elements of the arm
 base_length = 0.2  # total length of the arm
-env_idx = 1  # 1 for m32_Viekoda_Bay, 2 for mars-landscape
+env_idx = 2  # 1 for m32_Viekoda_Bay, 2 for mars-landscape
 
 # radius_tip = 0.0012  # radius of the arm at the tip
 # radius_base = 0.012  # radius of the arm at the base
@@ -30,7 +30,7 @@ elif env_idx == 2:
     mesh.translate(-np.array(mesh.mesh_center))
     mesh.rotate(axis=np.array([1.0, 0.0, 0.0]), angle=90)
     mesh.scale(np.array([10.0, 10.0, 10.0]) / np.max(mesh.mesh_scale))
-    mesh.translate(np.array([0.0, 0.0, 0.0]))
+    mesh.translate(np.array([0.0, 0.0, 0.05]))
     filename = "mars-landscape/grid_mars-landscape.dat"
 
 grid_size = max(2 * max(radius_mean), base_length / n_elem)

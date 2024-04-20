@@ -20,7 +20,7 @@ env_config = {
     "arm_c_per": 1.013,
     "arm_c_tan": 0.0256,
     "target_radius": 0.02,
-    "env_idx": 0,  # 0 for flat ground, 1 for m32_Viekoda_Bay, 2 for mars-landscape
+    "env_idx": 2,  # 0 for flat ground, 1 for m32_Viekoda_Bay, 2 for mars-landscape
 }
 
 task = {}
@@ -86,7 +86,7 @@ def main(filename):
             activations.append(np.zeros(current_muscle_groups[m].activation.shape))
         activations_octopus.append(activations)
 
-    i_arm = 3
+    i_arm = 1
 
     for k_sim in tqdm(range(total_steps)):
         time, systems, done = env.step(time, activations_octopus)
