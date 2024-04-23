@@ -32,8 +32,8 @@ def process_director(director, rotation):
 
 def check_folder(folder_name):
     if not (folder_name is None):
-        if os.path.exists(folder_name):
-            print("Clean up files in: {}/".format(folder_name))
-            shutil.rmtree(folder_name)
+        # if os.path.exists(folder_name):
+        #     print("Clean up files in: {}/".format(folder_name))
+        #     shutil.rmtree(folder_name)
         print("Create the directory: {}/".format(folder_name))
-        os.mkdir(folder_name)
+        os.makedirs(folder_name, exist_ok=True)

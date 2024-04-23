@@ -18,7 +18,6 @@ from elastica import Mesh
 from functools import partial
 import subprocess
 
-
 from _rendering_tool import check_folder
 from povray import (
     POVRAYFrame,
@@ -107,6 +106,16 @@ def main(filename):
 
     povray_data_folder = filename + "_povray"
     check_folder(povray_data_folder)
+    scale = 16
+    # povray_camera = POVRAYCamera(
+    #     position=np.array([-5.0 / 4, 1.5 / 4, 0.6 / 2]) * scale,
+    #     # position=[0.5, -5.0, 5.0],
+    #     # position=[0.0, 0.0, 20.0],
+    #     look_at=[0.0, 0.0, 0.6 / 2],
+    #     # look_at=[0.0, 0.0, 0.0],
+    #     angle=30.0,
+    #     floor=False,
+    # )
 
     FPS = 20.0
     WIDTH = 1080  # 400
@@ -159,6 +168,9 @@ def main(filename):
             floor=False,
         )
 
+    arm_base_radius = 0.2 / 20 * 0.8
+    arm_radius = np.linspace(arm_base_radius, arm_base_radius / 10, 100)
+
     povray_frame = POVRAYFrame(
         included_files=[
             povray_data_folder + "/camera.inc",
@@ -167,8 +179,8 @@ def main(filename):
         ]
     )
 
-    povray_rod = POVRAYRod(color="<0.45, 0.39, 1.0>")
-    # povray_head = POVRAYRod(color="<0.8, 0.0, 0.0>")
+    povray_rod = POVRAYRod(color="<0.45, 0.39, 1.0>", scale=scale)
+    povray_head = POVRAYRod(color="<0.45, 0.39, 1.0>", scale=scale)
     povray_target = POVRAYSphere(color=np.array([1.0, 0.498039, 0.0]))
 
     print("Exporting povray files and frames ...")
@@ -218,6 +230,7 @@ plane { <0,0,1>, -0.01    // plane with layered textures
         mesh.translate(
             -np.array([0, 0, 4 * radius_base + np.min(mesh.face_centers[2])])
         )
+        mesh.scale(np.ones(3) * scale)
         mesh.povray_mesh_export(
             texture_path=r"m32_Viekoda_Bay/m32_Viekoda_Bay.jpg",
             # color = [188/255,158/255,130/255,0.0],
@@ -229,32 +242,42 @@ plane { <0,0,1>, -0.01    // plane with layered textures
         mesh.rotate(axis=np.array([1.0, 0.0, 0.0]), angle=90)
         mesh.scale(np.array([10.0, 10.0, 10.0]) / np.max(mesh.mesh_scale))
         mesh.translate(np.array([0.0, 0.0, 0.05]))
+        mesh.scale(np.ones(3) * scale)
         mesh.povray_mesh_export(
             texture_path=r"mars-landscape/texture.jpg",
             normal_path=r"mars-landscape/normal.jpg",
             export_to=povray_data_folder,
         )
+    frames = range(len(rod_data[0]["time"]))
 
-    for k in tqdm(range(len(rod_data[0]["time"]))):
+    head_pos = []
+    arm_tip_pos = [[] for _ in range(len(rod_data[:-1]))]
+    ground_height = []
+
+    for k in tqdm(frames):
         frame_inc_name = "frame%04d.inc" % k
         with open(povray_data_folder + "/" + frame_inc_name, "w") as file_inc:
-            for rod_i in rod_data:
+            for i, rod_i in enumerate(rod_data[:-1]):
                 povray_rod.write_to(
                     file=file_inc,
                     position_data=rod_i["position"][k],
-                    radius_data=rod_i["radius"][k],
+                    radius_data=arm_radius,  # rod_i["radius"][k],
                     alpha=1.0,
                 )
-            # povray_head.write_to(
-            #     file=file_inc,
-            #     position_data=rod_data[-1]["position"][k],
-            #     radius_data=rod_data[-1]["radius"][k],
-            #     alpha=1.0,
-            # )
+
+                arm_tip_pos[i].append(np.mean(rod_i["position"][k], axis=-1))
+            povray_head.write_to(
+                file=file_inc,
+                position_data=rod_data[-1]["position"][k],
+                radius_data=rod_data[-1]["radius"][k],
+                alpha=1.0,
+            )
+            head_pos.append(np.mean(rod_data[-1]["position"][k], axis=-1))
 
         frame_povray_name = "frame%04d.pov" % k
         povray_frame.included_files[1] = povray_data_folder + "/" + frame_inc_name
         # povray_frame.included_files.append(povray_data_folder + "/surface.inc")
+
         with open(povray_data_folder + "/" + frame_povray_name, "w") as file_frame:
             povray_frame.write_included_files_to(file_frame)
 
@@ -296,6 +319,8 @@ plane { <0,0,1>, -0.01    // plane with layered textures
     #             pov_thread=multiprocessing.cpu_count(),
     #         )
     #         pbar.update()
+
+    np.savez("traj", head=head_pos, tip=arm_tip_pos)
 
 
 if __name__ == "__main__":

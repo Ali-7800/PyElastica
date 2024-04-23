@@ -12,7 +12,6 @@ class Environment(ArmEnvironment):
 
 
 def main(filename, target_position=None):
-
     """Create simulation environment"""
     final_time = 15.0
     env = Environment(final_time)
@@ -30,13 +29,22 @@ def main(filename, target_position=None):
     print("Running simulation ...")
     time = np.float64(0.0)
     np.random.seed(0)
-    for m in [0, 5]:
-        activations[m] = np.random.rand(*env.muscle_groups[m].activation.shape)
+    # TM
+    activations[0] = np.random.rand(*env.muscle_groups[0].activation.shape)
+    # LM
     activations[4] = np.linspace(1, 0, *env.muscle_groups[4].activation.shape)
+    activations[4][: len(activations[4]) // 2] = (
+        0.5 * np.random.rand(len(activations[4]) // 2) + 0.5
+    )
+    # OM (4 muscles in one set)
+    activations[5] = 0.2 * np.linspace(1, 0, *env.muscle_groups[5].activation.shape)
 
     for k_sim in tqdm(range(total_steps)):
         time, systems, done = env.step(time, activations)
-        if np.linalg.norm(env.shearable_rod.velocity_collection[:, -1]) < 1e-4 or done:
+        if (
+            k_sim > 1e4
+            and np.linalg.norm(env.shearable_rod.velocity_collection[:, -1]) < 1e-4
+        ) or done:
             break
 
     """ Save the data of the simulation """
