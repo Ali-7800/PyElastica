@@ -1,6 +1,91 @@
 import numpy as np
 from elastica import *
 from elastica._rotations import _inv_rotate, _skew_symmetrize
+from numba import njit
+
+
+class EndpointForcesWithStartTime(NoForces):
+    """
+    This class applies constant forces on the endpoint nodes.
+
+        Attributes
+        ----------
+        start_force: numpy.ndarray
+            1D (dim) array containing data with 'float' type. Force applied to first node of the system.
+        end_force: numpy.ndarray
+            1D (dim) array containing data with 'float' type. Force applied to last node of the system.
+        ramp_up_time: float
+            Applied forces are ramped up for ramp up time.
+        start_time: float
+            Forces are applied after this start time.
+
+    """
+
+    def __init__(self, start_force, end_force, ramp_up_time, start_time):
+        """
+
+        Parameters
+        ----------
+        start_force: numpy.ndarray
+            1D (dim) array containing data with 'float' type.
+            Force applied to first node of the system.
+        end_force: numpy.ndarray
+            1D (dim) array containing data with 'float' type.
+            Force applied to last node of the system.
+        ramp_up_time: float
+            Applied forces are ramped up until ramp up time.
+        start_time: float
+            Forces are applied after this start time.
+
+        """
+        super(EndpointForcesWithStartTime, self).__init__()
+        self.start_force = start_force
+        self.end_force = end_force
+        assert ramp_up_time > 0.0
+        self.ramp_up_time = ramp_up_time
+        self.start_time = start_time
+
+    def apply_forces(self, system: SystemType, time=0.0):
+        self.compute_end_point_forces_with_start_time(
+            system.external_forces,
+            self.start_force,
+            self.end_force,
+            time,
+            self.ramp_up_time,
+            self.start_time,
+        )
+
+    @staticmethod
+    @njit(cache=True)
+    def compute_end_point_forces_with_start_time(
+        external_forces, start_force, end_force, time, ramp_up_time, start_time
+    ):
+        """
+        Compute end point forces that are applied on the rod using numba njit decorator.
+
+        Parameters
+        ----------
+        external_forces: numpy.ndarray
+            2D (dim, blocksize) array containing data with 'float' type. External force vector.
+        start_force: numpy.ndarray
+            1D (dim) array containing data with 'float' type.
+        end_force: numpy.ndarray
+            1D (dim) array containing data with 'float' type.
+            Force applied to last node of the system.
+        time: float
+        ramp_up_time: float
+            Applied forces are ramped up until ramp up time.
+        start_time: float
+            Forces are applied after this start time.
+
+        Returns
+        -------
+
+        """
+        if time > start_time:
+            factor = min(1.0, (time - start_time) / ramp_up_time)
+            external_forces[..., 0] += start_force * factor
+            external_forces[..., -1] += end_force * factor
 
 
 class ElementwiseForcesAndTorques(NoForces):

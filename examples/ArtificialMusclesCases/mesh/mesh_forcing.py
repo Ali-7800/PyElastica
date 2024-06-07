@@ -95,20 +95,3 @@ class MeshRigidBodyPointSpring(NoForces):
             )
 
         return
-
-    def apply_torques(self, system, time: np.float64 = 0.0):
-        """
-        Apply restoring joint torques to the connected rod objects.
-
-        In FreeJoint class, this routine simply passes.
-
-        Parameters
-        ----------
-        system : object
-            Rod or rigid-body object
-
-        Returns
-        -------
-
-        """
-        pass

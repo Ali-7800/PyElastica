@@ -10,6 +10,7 @@ from examples.ArtificialMusclesCases.muscle.connect_straight_rods import (
 from examples.ArtificialMusclesCases.muscle.muscle_forcing import (
     PointSpring,
     MeshRigidBodyPointSpring,
+    EndpointForcesWithStartTime,
 )
 from examples.ArtificialMusclesCases.muscle.muscle_library import *
 from examples.ArtificialMusclesCases.muscle.artificial_muscle_actuation import (

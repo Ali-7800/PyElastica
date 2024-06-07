@@ -92,7 +92,6 @@ class SurfaceJointSideBySide(FreeJoint):
     # Apply force is same as free joint
     def apply_forces(self, rod_one, index_one, rod_two, index_two):
         # TODO: documentation
-
         (self.rod_one_rd2, self.rod_two_rd2, self.spring_force,) = self._apply_forces(
             self.k,
             self.nu,
@@ -116,6 +115,8 @@ class SurfaceJointSideBySide(FreeJoint):
             rod_two.velocity_collection,
             rod_one.external_forces,
             rod_two.external_forces,
+            rod_one.shear_matrix,
+            rod_two.shear_matrix,
         )
 
     @staticmethod
@@ -143,6 +144,8 @@ class SurfaceJointSideBySide(FreeJoint):
         rod_two_velocity_collection,
         rod_one_external_forces,
         rod_two_external_forces,
+        rod_one_shear_matrix,
+        rod_two_shear_matrix,
     ):
 
         rod_one_to_rod_two_connection_vec = _batch_matvec(
@@ -207,11 +210,13 @@ class SurfaceJointSideBySide(FreeJoint):
             distance_vector[..., idx_nonzero_distance] / distance[idx_nonzero_distance]
         )
         # print(np.min(_batch_norm(distance_vector)),np.max(_batch_norm(distance_vector)))
-        val = 1e-4
         # fx = (np.maximum(distance,val)-val)
         fx = distance
         # print(np.min(distance),np.max(distance))
-        spring_force = k * fx * normalized_distance_vector
+        # print(rod_one_shear_matrix[2,2,0])
+        spring_force = (
+            k * rod_one_shear_matrix[2, 2, 0] * fx * normalized_distance_vector
+        )
 
         normal_relative_velocity_vector = (
             _batch_dot(relative_velocity, normalized_distance_vector)
@@ -250,6 +255,7 @@ class SurfaceJointSideBySide(FreeJoint):
         idx_penetrate = np.where(penetration_strain < 0)[0]
         k_contact = np.zeros(index_one.shape[0])
         k_contact_temp = -k_repulsive * np.abs(penetration_strain) ** 1.5
+        # k_contact_temp = -k_repulsive * np.abs(penetration_strain) ** 0.75
         k_contact[idx_penetrate] += k_contact_temp[idx_penetrate]
         contact_force = k_contact * center_distance_unit_vec
         # contact_force[:,idx_penetrate] = 0.0
@@ -393,11 +399,13 @@ class ContactSurfaceJoint(FreeJoint):
         rod_one_direction_vec_in_material_frame,
         rod_two_direction_vec_in_material_frame,
         offset_btw_rods,
+        separation_distance,
         **kwargs,
     ):
         super().__init__(np.array(k), np.array(nu))
         self.k_repulsive = np.array(k_repulsive)
         self.offset_btw_rods = np.array(offset_btw_rods)
+        self.separation_distance = np.array(separation_distance)
 
         self.rod_one_direction_vec_in_material_frame = np.array(
             rod_one_direction_vec_in_material_frame
@@ -416,6 +424,7 @@ class ContactSurfaceJoint(FreeJoint):
             self.k_repulsive,
             index_one,
             index_two,
+            self.separation_distance,
             self.rod_one_direction_vec_in_material_frame,
             self.rod_two_direction_vec_in_material_frame,
             self.offset_btw_rods,
@@ -441,6 +450,7 @@ class ContactSurfaceJoint(FreeJoint):
         k_repulsive,
         index_one,
         index_two,
+        separation_distance,
         rod_one_direction_vec_in_material_frame,
         rod_two_direction_vec_in_material_frame,
         rest_offset_btw_rods,
@@ -500,7 +510,6 @@ class ContactSurfaceJoint(FreeJoint):
         # Compute spring force between two rods
         distance_vector = surface_position_rod_two - surface_position_rod_one
         np.round_(distance_vector, 12, distance_vector)
-        spring_force = k * (distance_vector)
 
         # Damping force
         rod_one_element_velocity = 0.5 * (
@@ -518,10 +527,19 @@ class ContactSurfaceJoint(FreeJoint):
 
         normalized_distance_vector = np.zeros((relative_velocity.shape))
 
-        idx_nonzero_distance = np.where(distance >= 1e-12)[0]
-
+        idx_nonzero_distance = np.where((distance >= 1e-12))[0]
         normalized_distance_vector[..., idx_nonzero_distance] = (
             distance_vector[..., idx_nonzero_distance] / distance[idx_nonzero_distance]
+        )
+
+        spring_force = (
+            k * distance * normalized_distance_vector * (distance < separation_distance)
+        )
+        spring_force += (
+            k
+            * (2 * separation_distance - distance)
+            * normalized_distance_vector
+            * (distance > separation_distance)
         )
 
         normal_relative_velocity_vector = (

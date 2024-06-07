@@ -28,14 +28,15 @@ tuning_sim_settings_dict = {
 tuning_sim_settings = Dict2Class(tuning_sim_settings_dict)
 
 slope_difference = 10
-tuning_muscle = Liuyang_monocoil()
+tuning_muscle = Samuel_monocoil()
 k = 100
 
-total_force_slope_experimental = (
-    tuning_muscle.total_force_experimental[-1]
-    - tuning_muscle.total_force_experimental[0]
-) / (tuning_muscle.strain_experimental[-1] - tuning_muscle.strain_experimental[0])
+# total_force_slope_experimental = (
+#     tuning_muscle.total_force_experimental[-1]
+#     - tuning_muscle.total_force_experimental[0]
+# ) / (tuning_muscle.strain_experimental[-1] - tuning_muscle.strain_experimental[0])
 
+total_force_slope_experimental = tuning_muscle.active_force_line_slope
 while abs(slope_difference) > 1e-6:
     total_forces_sim = []
     for i in [0, -1]:

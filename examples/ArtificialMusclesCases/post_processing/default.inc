@@ -19,7 +19,7 @@ global_settings{ assumed_gamma 1.5 }
 #include "math.inc"
 #include "transforms.inc"
 
-background{ color rgb<1,1,1>}
+background{ color rgb<0,0,0>}
 
 #declare Texture1  = texture {
                                pigment{ color rgb<1,0,0>}

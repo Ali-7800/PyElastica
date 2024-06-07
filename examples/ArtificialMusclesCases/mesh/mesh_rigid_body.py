@@ -162,7 +162,7 @@ def _update_face_centers(
                 )
 
 
-# @numba.njit(cache=True)
+@numba.njit(cache=True)
 def _update_faces(
     director_collection,
     faces,

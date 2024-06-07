@@ -58,7 +58,7 @@ class MeshRigidBodyCallBack(CallBackBaseClass):
             self.callback_params["time"].append(time)
             self.callback_params["step"].append(current_step)
             self.callback_params["position"].append(system.position_collection.copy())
-            self.callback_params["radius"].append(system.radius.copy())
+            self.callback_params["radius"].append(system.radius)
             self.callback_params["com"].append(system.compute_position_center_of_mass())
             self.callback_params["faces"].append(system.faces.copy())
             self.callback_params["face_centers"].append(system.face_centers.copy())

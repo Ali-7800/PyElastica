@@ -1,23 +1,15 @@
 import numpy as np
 from elastica import *
-from matplotlib import pyplot as plt
-from matplotlib.colors import to_rgb
-from mpl_toolkits.mplot3d import proj3d, Axes3D
-from tqdm import tqdm
-from elastica._linalg import (
-    _batch_cross,
-    _batch_norm,
-    _batch_dot,
-    _batch_matvec,
-)
-from typing import Dict, Sequence
-from numba import njit
 
 # from connect_straight_rods import *
 from examples.ArtificialMusclesCases import *
 
 from elastica.experimental.connection_contact_joint.parallel_connection import (
     get_connection_vector_straight_straight_rod,
+)
+
+from examples.ArtificialMusclesCases.muscle.muscle_fiber_init_symbolic import (
+    get_fiber_geometry,
 )
 
 
@@ -43,6 +35,7 @@ def octopus_arm_simulation(
     post_processing_dict_list = []
     octopus_arm_sim = OctopusArmCase()
     muscle_height = octopus_arm_properties.length / octopus_arm_properties.n_rows
+
     n_turns_per_backbone_length = 1 / (octopus_arm_properties.length)
 
     n_elem_muscle = 200
@@ -168,24 +161,51 @@ def octopus_arm_simulation(
 
     for row, theta, orientation in muscles_configuration:
         current_muscle = muscle_class()  # create muscle class instance
-        if orientation == "CCW":
-            CCW = (True, True)
-            link_sign = -1
-        else:
-            CCW = (False, False)
-            link_sign = 1
-
         muscle_position_radius = (
             arm_radius[0]
             + arm_slope * row * muscle_height
-            + (arm_radius / np.sin(slope_angle))
+            + (current_muscle.geometry.start_radius_list[0] / np.sin(slope_angle))
         )
-
-        muscle_length = conical_helix_length(
+        current_muscle.geometry.muscle_length = conical_helix_length(
             muscle_position_radius,
             arm_slope,
             muscle_height,
             n_turns_per_backbone_length,
+        )
+        if orientation == "CCW":
+            link_sign = -1
+            CCW_list = [True]
+            for radius in current_muscle.geometry.start_radius_list:
+                CCW_list.append(True)
+        else:
+            link_sign = 1
+            CCW_list = [False]
+            for radius in current_muscle.geometry.start_radius_list:
+                CCW_list.append(False)
+
+        current_muscle.geometry.CCW_list = CCW_list
+        current_muscle.geometry.initial_link_per_fiber_length *= link_sign
+
+        (
+            straight_fiber_length,
+            _,
+            _,
+            _,
+            straight_muscle_intrinsic_link,
+            straight_muscle_injected_twist,
+        ) = get_fiber_geometry(
+            n_elem=octopus_arm_properties.n_elem,
+            start_radius_list=current_muscle.geometry.start_radius_list,
+            taper_slope_list=current_muscle.geometry.taper_slope_list,
+            start_position=current_muscle.geometry.start_position,
+            direction=current_muscle.geometry.direction,
+            normal=current_muscle.geometry.normal,
+            offset_list=np.zeros((len(current_muscle.geometry.n_ply_per_coil_level),)),
+            length=current_muscle.geometry.muscle_length,
+            turns_per_length_list=current_muscle.geometry.turns_per_length_list,
+            initial_link_per_fiber_length=current_muscle.geometry.initial_link_per_fiber_length,
+            CCW_list=current_muscle.geometry.CCW_list[1:],
+            check_twist_difference=False,
         )
 
         n_elem_per_row = int(
@@ -196,35 +216,23 @@ def octopus_arm_simulation(
 
         # adjust muscle properties to attach on arm
         curved_turns_per_length_list = [n_turns_per_backbone_length]
-
-        curved_start_radius_list = [muscle_position_radius]
-
-        # curved_offset_list = [theta]
-
-        curved_taper_slope_list = [arm_slope]
-
-        for radius in current_muscle.geometry.start_radius_list:
-            curved_start_radius_list.append(radius)
-        current_muscle.geometry.start_radius_list = curved_start_radius_list
-
         for turns_per_length in current_muscle.geometry.turns_per_length_list:
-            n_muscle_turns_at_coil_level = (
-                turns_per_length * current_muscle.geometry.muscle_length
-            )
             n_muscle_turns_per_height = (
-                int(n_muscle_turns_at_coil_level) / muscle_height
+                turns_per_length * current_muscle.geometry.muscle_length / muscle_height
             )
             curved_turns_per_length_list.append(n_muscle_turns_per_height)
+
         current_muscle.geometry.turns_per_length_list = curved_turns_per_length_list
-
-        # for offset in current_muscle.geometry.offset_list: curved_offset_list.append(offset)
-        # current_muscle.geometry.offset_list = curved_offset_list
+        current_muscle.geometry.start_radius_list = [
+            muscle_position_radius
+        ] + current_muscle.geometry.start_radius_list
+        current_muscle.geometry.n_ply_per_coil_level = [
+            1
+        ] + current_muscle.geometry.n_ply_per_coil_level
+        current_muscle.geometry.taper_slope_list = [
+            arm_slope
+        ] + current_muscle.geometry.taper_slope_list
         current_muscle.geometry.angular_offset = theta
-
-        for taper_slope in current_muscle.geometry.taper_slope_list:
-            curved_taper_slope_list.append(taper_slope)
-        current_muscle.geometry.taper_slope_list = curved_taper_slope_list
-
         current_muscle.geometry.start_position = (
             current_muscle.geometry.start_position
             + row * muscle_height * octopus_arm_properties.direction
@@ -239,6 +247,37 @@ def octopus_arm_simulation(
         current_muscle.sim_settings.n_elem_per_coil = (
             octopus_arm_properties.n_elem / n_turns
         )  # adjust n_elem_per_coil so n_elem turns out to be 200
+
+        (
+            curved_fiber_length,
+            _,
+            _,
+            _,
+            curved_muscle_intrinsic_link,
+            curved_muscle_injected_twist,
+        ) = get_fiber_geometry(
+            n_elem=octopus_arm_properties.n_elem,
+            start_radius_list=current_muscle.geometry.start_radius_list,
+            taper_slope_list=current_muscle.geometry.taper_slope_list,
+            start_position=current_muscle.geometry.start_position,
+            direction=current_muscle.geometry.direction,
+            normal=current_muscle.geometry.normal,
+            offset_list=np.zeros((len(current_muscle.geometry.n_ply_per_coil_level),)),
+            length=current_muscle.geometry.muscle_length,
+            turns_per_length_list=current_muscle.geometry.turns_per_length_list,
+            initial_link_per_fiber_length=current_muscle.geometry.initial_link_per_fiber_length,
+            CCW_list=current_muscle.geometry.CCW_list,
+            check_twist_difference=False,
+        )
+
+        straight_to_curved_link_per_length_difference = (
+            curved_muscle_intrinsic_link - straight_muscle_intrinsic_link
+        ) / straight_fiber_length
+        print(
+            "Straight to curved link per length difference:",
+            straight_to_curved_link_per_length_difference,
+        )
+        current_muscle.geometry.initial_link_per_fiber_length += straight_to_curved_link_per_length_difference  # adjust link to accomodate the changed writhe and twist of the curved_muscle
         muscles[(row, theta, orientation)] = CoiledMuscle(
             current_muscle.geometry,
             current_muscle.properties,
@@ -263,129 +302,129 @@ def octopus_arm_simulation(
             time_step=dt,
         )
 
-        for muscle_rod in muscles[(row, theta, orientation)].muscle_rods:
-            (
-                rod_one_direction_vec_in_material_frame,
-                rod_two_direction_vec_in_material_frame,
-                offset_btw_rods,
-            ) = get_connection_vector_straight_straight_rod(
-                muscle_rod,
-                arm_rod,
-                (0, 1),
-                (row * n_elem_per_row, (row * n_elem_per_row) + 1),
-            )
+        # for muscle_rod in muscles[(row, theta, orientation)].muscle_rods:
+        #     (
+        #         rod_one_direction_vec_in_material_frame,
+        #         rod_two_direction_vec_in_material_frame,
+        #         offset_btw_rods,
+        #     ) = get_connection_vector_straight_straight_rod(
+        #         muscle_rod,
+        #         arm_rod,
+        #         (0, 1),
+        #         (row * n_elem_per_row, (row * n_elem_per_row) + 1),
+        #     )
 
-            octopus_arm_sim.connect(first_rod=muscle_rod, second_rod=arm_rod,).using(
-                SurfaceJointSideBySide,
-                first_connect_idx=0,
-                second_connect_idx=row * n_elem_per_row,
-                k=muscle_rod.shear_matrix[2, 2, 0] * 100,
-                nu=1e-4,
-                k_repulsive=muscle_rod.shear_matrix[2, 2, n_elem_muscle - 1] * 100,
-                rod_one_direction_vec_in_material_frame=rod_one_direction_vec_in_material_frame[
-                    ..., 0
-                ],
-                rod_two_direction_vec_in_material_frame=rod_two_direction_vec_in_material_frame[
-                    ..., 0
-                ],
-                offset_btw_rods=offset_btw_rods[0],
-            )
+        #     octopus_arm_sim.connect(first_rod=muscle_rod, second_rod=arm_rod,).using(
+        #         SurfaceJointSideBySide,
+        #         first_connect_idx=0,
+        #         second_connect_idx=row * n_elem_per_row,
+        #         k=muscle_rod.shear_matrix[2, 2, 0] * 100,
+        #         nu=1e-4,
+        #         k_repulsive=muscle_rod.shear_matrix[2, 2, n_elem_muscle - 1] * 100,
+        #         rod_one_direction_vec_in_material_frame=rod_one_direction_vec_in_material_frame[
+        #             ..., 0
+        #         ],
+        #         rod_two_direction_vec_in_material_frame=rod_two_direction_vec_in_material_frame[
+        #             ..., 0
+        #         ],
+        #         offset_btw_rods=offset_btw_rods[0],
+        #     )
 
-            (
-                rod_one_direction_vec_in_material_frame,
-                rod_two_direction_vec_in_material_frame,
-                offset_btw_rods,
-            ) = get_connection_vector_straight_straight_rod(
-                muscle_rod,
-                arm_rod,
-                (n_elem_muscle - 1, n_elem_muscle),
-                (((row + 1) * n_elem_per_row) - 1, (row + 1) * n_elem_per_row),
-            )
+        #     (
+        #         rod_one_direction_vec_in_material_frame,
+        #         rod_two_direction_vec_in_material_frame,
+        #         offset_btw_rods,
+        #     ) = get_connection_vector_straight_straight_rod(
+        #         muscle_rod,
+        #         arm_rod,
+        #         (n_elem_muscle - 1, n_elem_muscle),
+        #         (((row + 1) * n_elem_per_row) - 1, (row + 1) * n_elem_per_row),
+        #     )
 
-            octopus_arm_sim.connect(
-                first_rod=muscle_rod,
-                second_rod=arm_rod,
-                first_connect_idx=n_elem_muscle - 1,
-                second_connect_idx=((row + 1) * n_elem_per_row) - 1,
-            ).using(
-                SurfaceJointSideBySide,
-                k=muscle_rod.shear_matrix[2, 2, n_elem_muscle - 1] * 100,
-                nu=1e-4,
-                k_repulsive=muscle_rod.shear_matrix[2, 2, n_elem_muscle - 1] * 100,
-                rod_one_direction_vec_in_material_frame=rod_one_direction_vec_in_material_frame[
-                    ..., 0
-                ],
-                rod_two_direction_vec_in_material_frame=rod_two_direction_vec_in_material_frame[
-                    ..., 0
-                ],
-                offset_btw_rods=offset_btw_rods[0],
-            )
+        #     octopus_arm_sim.connect(
+        #         first_rod=muscle_rod,
+        #         second_rod=arm_rod,
+        #         first_connect_idx=n_elem_muscle - 1,
+        #         second_connect_idx=((row + 1) * n_elem_per_row) - 1,
+        #     ).using(
+        #         SurfaceJointSideBySide,
+        #         k=muscle_rod.shear_matrix[2, 2, n_elem_muscle - 1] * 100,
+        #         nu=1e-4,
+        #         k_repulsive=muscle_rod.shear_matrix[2, 2, n_elem_muscle - 1] * 100,
+        #         rod_one_direction_vec_in_material_frame=rod_one_direction_vec_in_material_frame[
+        #             ..., 0
+        #         ],
+        #         rod_two_direction_vec_in_material_frame=rod_two_direction_vec_in_material_frame[
+        #             ..., 0
+        #         ],
+        #         offset_btw_rods=offset_btw_rods[0],
+        #     )
 
-            for element in range(1, n_elem_muscle - 1):
-                arm_element = int(element * n_elem_per_row / n_elem_muscle)
-                (
-                    rod_one_direction_vec_in_material_frame,
-                    rod_two_direction_vec_in_material_frame,
-                    offset_btw_rods,
-                ) = get_connection_vector_straight_straight_rod(
-                    muscle_rod,
-                    arm_rod,
-                    (element, element + 1),
-                    (arm_element, arm_element + 1),
-                )
+        #     for element in range(1, n_elem_muscle - 1):
+        #         arm_element = int(element * n_elem_per_row / n_elem_muscle)
+        #         (
+        #             rod_one_direction_vec_in_material_frame,
+        #             rod_two_direction_vec_in_material_frame,
+        #             offset_btw_rods,
+        #         ) = get_connection_vector_straight_straight_rod(
+        #             muscle_rod,
+        #             arm_rod,
+        #             (element, element + 1),
+        #             (arm_element, arm_element + 1),
+        #         )
 
-                octopus_arm_sim.connect(
-                    first_rod=muscle_rod,
-                    second_rod=arm_rod,
-                    first_connect_idx=element,
-                    second_connect_idx=arm_element,
-                ).using(
-                    SurfaceJointSideBySide,
-                    k=muscle_rod.shear_matrix[2, 2, element] / 100,
-                    nu=0,
-                    k_repulsive=muscle_rod.shear_matrix[2, 2, element] / 10,
-                    rod_one_direction_vec_in_material_frame=rod_one_direction_vec_in_material_frame[
-                        ..., 0
-                    ],
-                    rod_two_direction_vec_in_material_frame=rod_two_direction_vec_in_material_frame[
-                        ..., 0
-                    ],
-                    offset_btw_rods=offset_btw_rods[0],
-                )
+        #         octopus_arm_sim.connect(
+        #             first_rod=muscle_rod,
+        #             second_rod=arm_rod,
+        #             first_connect_idx=element,
+        #             second_connect_idx=arm_element,
+        #         ).using(
+        #             SurfaceJointSideBySide,
+        #             k=muscle_rod.shear_matrix[2, 2, element] / 100,
+        #             nu=0,
+        #             k_repulsive=muscle_rod.shear_matrix[2, 2, element] / 10,
+        #             rod_one_direction_vec_in_material_frame=rod_one_direction_vec_in_material_frame[
+        #                 ..., 0
+        #             ],
+        #             rod_two_direction_vec_in_material_frame=rod_two_direction_vec_in_material_frame[
+        #                 ..., 0
+        #             ],
+        #             offset_btw_rods=offset_btw_rods[0],
+        #         )
 
-    assert len(muscles_activation_signal.activation_startTime_untwistTime_force) == len(
-        muscles_activation_signal.activation_group
-    ), "Make sure each activated muscle has start time, untwist time, and force specified"
-    for muscle_coords, startTime_untwistTime_force in zip(
-        muscles_activation_signal.activation_group,
-        muscles_activation_signal.activation_startTime_untwistTime_force,
-    ):
-        start_time = startTime_untwistTime_force[0]
-        untwist_time = startTime_untwistTime_force[1]
-        kappa_change = startTime_untwistTime_force[2]
-        row, theta, orientation = muscle_coords
+    # assert len(muscles_activation_signal.activation_startTime_untwistTime_force) == len(
+    #     muscles_activation_signal.activation_group
+    # ), "Make sure each activated muscle has start time, untwist time, and force specified"
+    # for muscle_coords, startTime_untwistTime_force in zip(
+    #     muscles_activation_signal.activation_group,
+    #     muscles_activation_signal.activation_startTime_untwistTime_force,
+    # ):
+    #     start_time = startTime_untwistTime_force[0]
+    #     untwist_time = startTime_untwistTime_force[1]
+    #     kappa_change = startTime_untwistTime_force[2]
+    #     row, theta, orientation = muscle_coords
 
-        muscles[(row, theta, orientation)].actuate(
-            octopus_arm_sim,
-            ArtficialMuscleActuation,
-            contraction_time=sim_settings.time_untwisting,
-            start_time=sim_settings.untwisting_start_time,
-            kappa_change=muscles[
-                (row, theta, orientation)
-            ].muscle_sim_settings.actuation_kappa_change,
-            room_temperature=muscles[
-                (row, theta, orientation)
-            ].muscle_sim_settings.actuation_start_temperature,
-            end_temperature=muscles[
-                (row, theta, orientation)
-            ].muscle_sim_settings.actuation_end_temperature,
-            youngs_modulus_coefficients=muscles[
-                (row, theta, orientation)
-            ].muscle_properties.youngs_modulus_coefficients,
-            thermal_expansion_coefficient=muscles[
-                (row, theta, orientation)
-            ].muscle_properties.thermal_expansion_coefficient,
-        )
+    #     muscles[(row, theta, orientation)].actuate(
+    #         octopus_arm_sim,
+    #         ArtficialMuscleActuation,
+    #         contraction_time=untwist_time,
+    #         start_time=start_time,
+    #         kappa_change=muscles[
+    #             (row, theta, orientation)
+    #         ].muscle_sim_settings.actuation_kappa_change,
+    #         room_temperature=muscles[
+    #             (row, theta, orientation)
+    #         ].muscle_sim_settings.actuation_start_temperature,
+    #         end_temperature=muscles[
+    #             (row, theta, orientation)
+    #         ].muscle_sim_settings.actuation_end_temperature,
+    #         youngs_modulus_coefficients=muscles[
+    #             (row, theta, orientation)
+    #         ].muscle_properties.youngs_modulus_coefficients,
+    #         thermal_expansion_coefficient=muscles[
+    #             (row, theta, orientation)
+    #         ].muscle_properties.thermal_expansion_coefficient,
+    #     )
 
     # finalize simulation
     octopus_arm_sim.finalize()
@@ -398,7 +437,7 @@ def octopus_arm_simulation(
     integrate(time_stepper, octopus_arm_sim, sim_settings.final_time, total_steps)
 
     # plotting the videos
-    filename_video = "mini_muri.mp4"
+    filename_video = "octopus_arm.mp4"
     plot_video_with_surface(
         post_processing_dict_list,
         video_name=filename_video,
@@ -409,9 +448,8 @@ def octopus_arm_simulation(
         x_limits=[-(octopus_arm_properties.length), (octopus_arm_properties.length)],
         y_limits=[-(octopus_arm_properties.length), (octopus_arm_properties.length)],
         z_limits=[
-            -2 * octopus_arm_properties.backbone_radius[0],
-            octopus_arm_properties.length
-            + 2 * octopus_arm_properties.backbone_radius[0],
+            -2 * octopus_arm_properties.start_radius,
+            octopus_arm_properties.length + 2 * octopus_arm_properties.start_radius,
         ],
     )
 

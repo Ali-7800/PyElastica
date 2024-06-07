@@ -33,14 +33,15 @@ octopus_arm_properties_dict = {
 
 
 sim_settings_dict = {
-    "final_time": 1,
+    "final_time": 0.1,
     "self_contact": False,
     "save_data": True,
 }
 
 octopus_arm_properties = Dict2Class(octopus_arm_properties_dict)
 
-muscle_class = Liuyang_monocoil
+# muscle_class = Samuel_monocoil
+muscle_class = Samuel_supercoil_stl
 
 sim_settings = Dict2Class(sim_settings_dict)
 
@@ -136,7 +137,7 @@ muscles_activation_signal = Dict2Class(muscles_activation_signal_dict)
 octopus_arm_simulation(
     octopus_arm_properties,
     muscle_class,
-    muscles_configuration=all_muscles_coords,
+    muscles_configuration=front_diamonds_coords[0:4],
     muscles_activation_signal=muscles_activation_signal,
     sim_settings=sim_settings,
 )

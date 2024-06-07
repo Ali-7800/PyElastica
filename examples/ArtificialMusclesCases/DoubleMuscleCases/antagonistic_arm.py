@@ -5,12 +5,12 @@ from parallel_muscle_simulator import parallel_muscle_contraction_simulation
 
 antagonistic_sim_settings_dict = {
     "sim_name": "AntgonisticArm",
-    "final_time": 1,  # seconds
+    "final_time": 20,  # seconds
     "untwisting_start_time": 0,  # seconds
     "time_untwisting": 1,  # seconds
     "rendering_fps": 20,
     "contraction": True,
-    "plot_video": True,
+    "plot_video": False,
     "save_data": False,
     "return_data": False,
     "povray_viz": True,
@@ -21,11 +21,38 @@ antagonistic_sim_settings_dict = {
     "force_mag": 3.0,
 }
 
+# fiber-fiber interaction settings
+first_muscle_fiber_connection_settings_dict = {
+    "connection_range": 2,
+    "k_val": 1e0,
+    "nu": 0.0,
+    "k_repulsive_val": 1e2,
+    "friction_coefficient": 5e-1,
+    "velocity_damping_coefficient": 1e5,
+}
+
+# fiber-fiber interaction settings
+second_muscle_fiber_connection_settings_dict = {
+    "connection_range": 2,
+    "k_val": 2.5e2,
+    "nu": 0.0,
+    "k_repulsive_val": 1e2,
+    "friction_coefficient": 5e-1,
+    "velocity_damping_coefficient": 1e5,
+}
+
 
 antagonistic_sim_settings = Dict2Class(antagonistic_sim_settings_dict)
+first_muscle_fiber_connection_settings = Dict2Class(
+    first_muscle_fiber_connection_settings_dict
+)
+second_muscle_fiber_connection_settings = Dict2Class(
+    second_muscle_fiber_connection_settings_dict
+)
 
-first_muscle = Liuyang_monocoil()
-second_muscle = Liuyang_monocoil()
+
+first_muscle = Samuel_supercoil_stl(experimental_data=False)
+second_muscle = Samuel_supercoil_stl(experimental_data=False)
 
 # Create rigid beam
 x_scale = 1e-3
@@ -41,7 +68,7 @@ rigid_body_mesh.translate(
     -np.array(rigid_body_mesh.mesh_center)
 )  # move mesh center to 0,0,0
 rigid_body_mesh.rotate(np.array([1, 0, 0]), 180)
-rigid_body_mesh.scale(np.array([x_scale, y_scale, z_scale]))
+rigid_body_mesh.scale(np.array([x_scale, y_scale, -z_scale]))
 model_scale = 1e-3
 center_of_mass = (
     4.096e-1 * direction + 3.7692 * binormal + 3.055e-1 * normal
@@ -106,11 +133,15 @@ muscle_rigid_body_connections_dict = {
 
 rigid_body_properties = Dict2Class(rigid_body_properties_dict)
 muscle_rigid_body_connections = Dict2Class(muscle_rigid_body_connections_dict)
+first_muscle.geometry.muscle_length = 40e-3
+second_muscle.geometry.muscle_length = 40e-3
 
 
 parallel_muscle_contraction_simulation(
     first_input_muscle=first_muscle,
     second_input_muscle=second_muscle,
+    first_muscle_fiber_connection_settings=first_muscle_fiber_connection_settings,
+    second_muscle_fiber_connection_settings=second_muscle_fiber_connection_settings,
     rigid_body_mesh=rigid_body_mesh,
     rigid_body_properties=rigid_body_properties,
     muscle_rigid_body_connections=muscle_rigid_body_connections,

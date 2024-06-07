@@ -18,6 +18,8 @@ class MuscleCase(
 def parallel_muscle_contraction_simulation(
     first_input_muscle,
     second_input_muscle,
+    first_muscle_fiber_connection_settings,
+    second_muscle_fiber_connection_settings,
     rigid_body_mesh,
     rigid_body_properties,
     muscle_rigid_body_connections,
@@ -47,10 +49,13 @@ def parallel_muscle_contraction_simulation(
         second_input_muscle.geometry.turns_per_length_list[0]
         * second_input_muscle.geometry.muscle_length,
     )
-    n_elem = max(
-        first_input_muscle.sim_settings.n_elem_per_coil,
-        second_input_muscle.sim_settings.n_elem_per_coil,
-    ) * int(n_turns)
+    n_elem = (
+        max(
+            first_input_muscle.sim_settings.n_elem_per_coil,
+            second_input_muscle.sim_settings.n_elem_per_coil,
+        )
+        * int(n_turns)
+    )
     dt = (
         0.3
         * min(
@@ -148,6 +153,11 @@ def parallel_muscle_contraction_simulation(
         muscle_rigid_body_connections.direction_to_second_muscle,
     ]
 
+    fiber_connection_settings_list = [
+        first_muscle_fiber_connection_settings,
+        second_muscle_fiber_connection_settings,
+    ]
+
     for (
         muscle,
         muscle_geometry,
@@ -155,6 +165,7 @@ def parallel_muscle_contraction_simulation(
         muscle_properties,
         distance_to_point_from_center,
         direction_to_point_from_center,
+        fiber_connection_settings,
     ) in zip(
         muscle_list,
         muscle_geometry_list,
@@ -162,6 +173,7 @@ def parallel_muscle_contraction_simulation(
         muscle_properties_list,
         distance_to_point_from_center_list,
         direction_to_point_from_center_list,
+        fiber_connection_settings_list,
     ):
         muscle.append_muscle_to_sim(muscle_sim)
         # set the diagnostics for muscle and collect data
@@ -260,10 +272,15 @@ def parallel_muscle_contraction_simulation(
             rod=rigid_body,
             first_connect_idx=0,
             second_connect_idx=0,
-            k=1e-3,
+            k=1e-2,
             nu=0,
             distance_to_point_from_center=distance_to_point_from_center,
             direction_to_point_from_center=direction_to_point_from_center,
+        )
+
+        # connect muscle fibers
+        muscle.connect_muscle_rods(
+            muscle_sim, connection_settings=fiber_connection_settings
         )
 
     # finalize simulation
