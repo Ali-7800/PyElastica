@@ -71,6 +71,8 @@ class SurfaceJointSideBySide(FreeJoint):
         k_repulsive,
         friction_coefficient,
         velocity_damping_coefficient,
+        separation_distance,
+        decay_factor,
         rod_one_direction_vec_in_material_frame,
         rod_two_direction_vec_in_material_frame,
         offset_btw_rods,
@@ -81,6 +83,8 @@ class SurfaceJointSideBySide(FreeJoint):
         self.offset_btw_rods = np.array(offset_btw_rods)
         self.friction_coefficient = np.array(friction_coefficient)
         self.velocity_damping_coefficient = np.array(velocity_damping_coefficient)
+        self.separation_distance = np.array(separation_distance)
+        self.decay_factor = np.array(decay_factor)
 
         self.rod_one_direction_vec_in_material_frame = np.array(
             rod_one_direction_vec_in_material_frame
@@ -98,6 +102,8 @@ class SurfaceJointSideBySide(FreeJoint):
             self.k_repulsive,
             self.friction_coefficient,
             self.velocity_damping_coefficient,
+            self.separation_distance,
+            self.decay_factor,
             index_one,
             index_two,
             self.rod_one_direction_vec_in_material_frame,
@@ -127,6 +133,8 @@ class SurfaceJointSideBySide(FreeJoint):
         k_repulsive,
         friction_coefficient,
         velocity_damping_coefficient,
+        separation_distance,
+        decay_factor,
         index_one,
         index_two,
         rod_one_direction_vec_in_material_frame,
@@ -186,6 +194,9 @@ class SurfaceJointSideBySide(FreeJoint):
         # Compute connection points on the rod surfaces
         surface_position_rod_one = rod_one_element_position + rod_one_rd2
         surface_position_rod_two = rod_two_element_position + rod_two_rd2
+        center_distance_vector = rod_two_element_position - rod_one_element_position
+        center_distance = _batch_norm(center_distance_vector)
+        center_distance_unit_vec = center_distance_vector / center_distance
 
         # Compute spring force between two rods
         distance_vector = surface_position_rod_two - surface_position_rod_one
@@ -204,6 +215,7 @@ class SurfaceJointSideBySide(FreeJoint):
 
         np.round_(distance_vector, 12, distance_vector)
         distance = _batch_norm(distance_vector)
+        # print(np.max(distance),np.min(distance),"connection percentage: %",np.mean(distance< separation_distance)*100)
         normalized_distance_vector = np.zeros((relative_velocity.shape))
         idx_nonzero_distance = np.where(distance >= 1e-12)[0]
         normalized_distance_vector[..., idx_nonzero_distance] = (
@@ -211,11 +223,29 @@ class SurfaceJointSideBySide(FreeJoint):
         )
         # print(np.min(_batch_norm(distance_vector)),np.max(_batch_norm(distance_vector)))
         # fx = (np.maximum(distance,val)-val)
-        fx = distance
-        # print(np.min(distance),np.max(distance))
-        # print(rod_one_shear_matrix[2,2,0])
+        # fx = distance
+        # spring_force = (
+        #     k  * fx * normalized_distance_vector #* rod_one_shear_matrix[2, 2, 0]
+        # )
+        # spring_force = np.zeros_like(distance_vector)
+        # spring_force = k * distance * normalized_distance_vector * (distance <= separation_distance)
+        # spring_force += (
+        #     k * (separation_distance) * np.exp(-(distance-separation_distance)/decay_factor)* normalized_distance_vector * (distance > separation_distance)
+        # )
+        # print(np.mean(center_distance),"Parallel connection percentage: %",np.mean(center_distance<= separation_distance)*100)
+        spring_force = np.zeros_like(distance_vector)
         spring_force = (
-            k * rod_one_shear_matrix[2, 2, 0] * fx * normalized_distance_vector
+            k
+            * distance
+            * normalized_distance_vector
+            * (distance <= separation_distance)
+        )
+        spring_force += (
+            k
+            * (separation_distance)
+            * np.exp(-(distance - separation_distance) / decay_factor)
+            * normalized_distance_vector
+            * (distance > separation_distance)
         )
 
         normal_relative_velocity_vector = (
@@ -233,8 +263,6 @@ class SurfaceJointSideBySide(FreeJoint):
         # as a pressure force.
         # We assume contact forces are in plane.
         # print('------------------___+')
-        center_distance = rod_two_element_position - rod_one_element_position
-        center_distance_unit_vec = center_distance / _batch_norm(center_distance)
         #        penetration_strain = (
         #            _batch_norm(center_distance)
         #            / (
@@ -245,7 +273,7 @@ class SurfaceJointSideBySide(FreeJoint):
         #            )
         #            - 1
         #        )
-        penetration_strain = _batch_norm(center_distance) - (
+        penetration_strain = center_distance - (
             rod_one_radius[index_one]
             + offset_rod_one
             + rod_two_radius[index_two]
@@ -257,7 +285,9 @@ class SurfaceJointSideBySide(FreeJoint):
         k_contact_temp = -k_repulsive * np.abs(penetration_strain) ** 1.5
         # k_contact_temp = -k_repulsive * np.abs(penetration_strain) ** 0.75
         k_contact[idx_penetrate] += k_contact_temp[idx_penetrate]
-        contact_force = k_contact * center_distance_unit_vec
+        contact_force = (
+            k_contact * center_distance_unit_vec
+        )  # * rod_one_shear_matrix[2, 2, 0]
         # contact_force[:,idx_penetrate] = 0.0
 
         # Add contact forces
@@ -400,12 +430,14 @@ class ContactSurfaceJoint(FreeJoint):
         rod_two_direction_vec_in_material_frame,
         offset_btw_rods,
         separation_distance,
+        decay_factor,
         **kwargs,
     ):
         super().__init__(np.array(k), np.array(nu))
         self.k_repulsive = np.array(k_repulsive)
         self.offset_btw_rods = np.array(offset_btw_rods)
         self.separation_distance = np.array(separation_distance)
+        self.decay_factor = np.array(decay_factor)
 
         self.rod_one_direction_vec_in_material_frame = np.array(
             rod_one_direction_vec_in_material_frame
@@ -425,6 +457,7 @@ class ContactSurfaceJoint(FreeJoint):
             index_one,
             index_two,
             self.separation_distance,
+            self.decay_factor,
             self.rod_one_direction_vec_in_material_frame,
             self.rod_two_direction_vec_in_material_frame,
             self.offset_btw_rods,
@@ -451,6 +484,7 @@ class ContactSurfaceJoint(FreeJoint):
         index_one,
         index_two,
         separation_distance,
+        decay_factor,
         rod_one_direction_vec_in_material_frame,
         rod_two_direction_vec_in_material_frame,
         rest_offset_btw_rods,
@@ -503,15 +537,30 @@ class ContactSurfaceJoint(FreeJoint):
             rod_two_radius[index_two] + offset_rod_two
         )
 
-        # Compute connection points on the rod surfaces
+        # # Compute connection points on the rod surfaces
         surface_position_rod_one = rod_one_element_position + rod_one_rd2
         surface_position_rod_two = rod_two_element_position + rod_two_rd2
 
         # Compute spring force between two rods
-        distance_vector = surface_position_rod_two - surface_position_rod_one
-        np.round_(distance_vector, 12, distance_vector)
+        surface_distance_vector = surface_position_rod_two - surface_position_rod_one
+        np.round_(surface_distance_vector, 12, surface_distance_vector)
+        surface_distance = _batch_norm(surface_distance_vector)
 
-        # Damping force
+        center_distance_vector = rod_two_element_position - rod_one_element_position
+        center_distance = _batch_norm(center_distance_vector)
+        #        penetration_strain = (
+        #            _batch_norm(center_distance)
+        #            / (
+        #                rod_one_radius[index_one]
+        #                + offset_rod_one
+        #                + rod_two_radius[index_two]
+        #                + offset_rod_two
+        #            )
+        #            - 1
+        #        )
+        penetration_strain = center_distance - (
+            rod_one_radius[index_one] + rod_two_radius[index_two]
+        )
         rod_one_element_velocity = 0.5 * (
             rod_one_velocity_collection[:, index_one]
             + rod_one_velocity_collection[:, index_one + 1]
@@ -520,31 +569,62 @@ class ContactSurfaceJoint(FreeJoint):
             rod_two_velocity_collection[:, index_two]
             + rod_two_velocity_collection[:, index_two + 1]
         )
-
         relative_velocity = rod_two_element_velocity - rod_one_element_velocity
 
-        distance = _batch_norm(distance_vector)
-
-        normalized_distance_vector = np.zeros((relative_velocity.shape))
-
-        idx_nonzero_distance = np.where((distance >= 1e-12))[0]
-        normalized_distance_vector[..., idx_nonzero_distance] = (
-            distance_vector[..., idx_nonzero_distance] / distance[idx_nonzero_distance]
+        np.round_(penetration_strain, 12, penetration_strain)
+        idx_penetrate = np.where(penetration_strain < 0)[0]
+        normalized_center_distance_vector = np.zeros((relative_velocity.shape))
+        idx_nonzero_center_distance = np.where(center_distance >= 1e-12)[0]
+        normalized_center_distance_vector[..., idx_nonzero_center_distance] = (
+            center_distance_vector[..., idx_nonzero_center_distance]
+            / center_distance[idx_nonzero_center_distance]
+        )
+        normalized_surface_distance_vector = np.zeros((relative_velocity.shape))
+        idx_nonzero_surface_distance = np.where(surface_distance >= 1e-12)[0]
+        normalized_surface_distance_vector[..., idx_nonzero_surface_distance] = (
+            surface_distance_vector[..., idx_nonzero_surface_distance]
+            / surface_distance[idx_nonzero_surface_distance]
         )
 
+        # Damping force
+        # distance = _batch_norm(distance_vector)
+
+        # idx_nonzero_distance = np.where((distance >= 1e-12))[0]
+        # normalized_distance_vector[..., idx_nonzero_distance] = (
+        #     distance_vector[..., idx_nonzero_distance] / distance[idx_nonzero_distance]
+        # )
         spring_force = (
-            k * distance * normalized_distance_vector * (distance < separation_distance)
+            k
+            * surface_distance
+            * normalized_surface_distance_vector
+            * (surface_distance <= separation_distance)
         )
+        # spring_force += (
+        #     k * (0.15*separation_distance) * normalized_surface_distance_vector * (surface_distance > separation_distance)
+        # )
         spring_force += (
             k
-            * (2 * separation_distance - distance)
-            * normalized_distance_vector
-            * (distance > separation_distance)
+            * (separation_distance)
+            * np.exp(-(surface_distance - separation_distance) / decay_factor)
+            * normalized_surface_distance_vector
+            * (surface_distance > separation_distance)
         )
 
+        # idx_separation = np.where(penetration_strain < 0)[0]
+
+        # spring_force = (
+        #     k *penetration_strain * normalized_distance_vector * (penetration_strain <= separation_distance)
+        # )
+        # spring_force += (
+        #     k
+        #     * np.maximum(separation_distance - 2*(penetration_strain-separation_distance),0)
+        #     * normalized_distance_vector
+        #     * (penetration_strain > separation_distance)
+        # )
+
         normal_relative_velocity_vector = (
-            _batch_dot(relative_velocity, normalized_distance_vector)
-            * normalized_distance_vector
+            _batch_dot(relative_velocity, normalized_center_distance_vector)
+            * normalized_center_distance_vector
         )
 
         damping_force = -nu * normal_relative_velocity_vector
@@ -557,27 +637,11 @@ class ContactSurfaceJoint(FreeJoint):
         # as a pressure force.
         # We assume contact forces are in plane.
         # print('------------------___+')
-        center_distance = rod_two_element_position - rod_one_element_position
-        center_distance_unit_vec = center_distance / _batch_norm(center_distance)
-        #        penetration_strain = (
-        #            _batch_norm(center_distance)
-        #            / (
-        #                rod_one_radius[index_one]
-        #                + offset_rod_one
-        #                + rod_two_radius[index_two]
-        #                + offset_rod_two
-        #            )
-        #            - 1
-        #        )
-        penetration_strain = _batch_norm(center_distance) - (
-            rod_one_radius[index_one] + rod_two_radius[index_two]
-        )
-        np.round_(penetration_strain, 12, penetration_strain)
-        idx_penetrate = np.where(penetration_strain < 0)[0]
+
         k_contact = np.zeros(index_one.shape[0])
         k_contact_temp = -k_repulsive * np.abs(penetration_strain)
         k_contact[idx_penetrate] += k_contact_temp[idx_penetrate]
-        contact_force = k_contact * center_distance_unit_vec
+        contact_force = k_contact * normalized_center_distance_vector
         # contact_force[:,idx_penetrate] = 0.0
 
         # Add contact forces
@@ -618,19 +682,19 @@ class ContactSurfaceJoint(FreeJoint):
         )
 
     def apply_torques(self, rod_one, index_one, rod_two, index_two):
-        # pass
+        pass
 
-        self._apply_torques(
-            self.spring_force,
-            self.rod_one_rd2,
-            self.rod_two_rd2,
-            index_one,
-            index_two,
-            rod_one.director_collection,
-            rod_two.director_collection,
-            rod_one.external_torques,
-            rod_two.external_torques,
-        )
+        # self._apply_torques(
+        #     self.spring_force,
+        #     self.rod_one_rd2,
+        #     self.rod_two_rd2,
+        #     index_one,
+        #     index_two,
+        #     rod_one.director_collection,
+        #     rod_two.director_collection,
+        #     rod_one.external_torques,
+        #     rod_two.external_torques,
+        # )
 
     @staticmethod
     @njit(cache=True)
@@ -677,6 +741,211 @@ class ContactSurfaceJoint(FreeJoint):
             rod_two_external_torques[
                 2, index_two[k]
             ] += torque_on_rod_two_material_frame[2, k]
+
+
+class Center2CenterParallelConnection(FreeJoint):
+    """
+    TODO: documentation
+    """
+
+    def __init__(
+        self,
+        k,
+        nu,
+        k_repulsive,
+        friction_coefficient,
+        velocity_damping_coefficient,
+        separation_distance,
+        decay_factor,
+        **kwargs,
+    ):
+        super().__init__(np.array(k), np.array(nu))
+        self.k_repulsive = np.array(k_repulsive)
+        self.friction_coefficient = np.array(friction_coefficient)
+        self.velocity_damping_coefficient = np.array(velocity_damping_coefficient)
+        self.separation_distance = np.array(separation_distance)
+        self.decay_factor = np.array(decay_factor)
+
+    # Apply force is same as free joint
+    def apply_forces(self, rod_one, index_one, rod_two, index_two):
+        # TODO: documentation
+
+        self._apply_forces(
+            self.k,
+            self.k_repulsive,
+            self.friction_coefficient,
+            self.velocity_damping_coefficient,
+            self.separation_distance,
+            self.decay_factor,
+            index_one,
+            index_two,
+            rod_one.position_collection,
+            rod_two.position_collection,
+            rod_one.velocity_collection,
+            rod_two.velocity_collection,
+            rod_one.omega_collection,
+            rod_two.omega_collection,
+            rod_one.radius,
+            rod_two.radius,
+            rod_one.external_forces,
+            rod_two.external_forces,
+            rod_one.shear_matrix,
+        )
+
+    @staticmethod
+    @njit(cache=True)
+    def _apply_forces(
+        k,
+        k_repulsive,
+        friction_coefficient,
+        velocity_damping_coefficient,
+        separation_distance,
+        decay_factor,
+        index_one,
+        index_two,
+        rod_one_position_collection,
+        rod_two_position_collection,
+        rod_one_velocity_collection,
+        rod_two_velocity_collection,
+        rod_one_omega_collection,
+        rod_two_omega_collection,
+        rod_one_radius,
+        rod_two_radius,
+        rod_one_external_forces,
+        rod_two_external_forces,
+        rod_one_shear_matrix,
+    ):
+
+        # Compute element positions
+        rod_one_element_position = 0.5 * (
+            rod_one_position_collection[:, index_one]
+            + rod_one_position_collection[:, index_one + 1]
+        )
+        rod_two_element_position = 0.5 * (
+            rod_two_position_collection[:, index_two]
+            + rod_two_position_collection[:, index_two + 1]
+        )
+
+        # Damping force
+        rod_one_element_velocity = 0.5 * (
+            rod_one_velocity_collection[:, index_one]
+            + rod_one_velocity_collection[:, index_one + 1]
+        )
+        rod_two_element_velocity = 0.5 * (
+            rod_two_velocity_collection[:, index_two]
+            + rod_two_velocity_collection[:, index_two + 1]
+        )
+
+        # Compute spring force between two rods
+        distance_vector = rod_two_element_position - rod_one_element_position
+
+        distance = _batch_norm(distance_vector)
+
+        normalized_distance_vector = np.zeros((distance_vector.shape))
+
+        penetration_strain = distance - (
+            rod_one_radius[index_one] + rod_two_radius[index_two]
+        )
+
+        np.round_(penetration_strain, 12, penetration_strain)
+
+        idx_nonzero_distance = np.where((distance >= 1e-12))[0]
+        normalized_distance_vector[..., idx_nonzero_distance] = (
+            distance_vector[..., idx_nonzero_distance] / distance[idx_nonzero_distance]
+        )
+
+        idx_separate = np.where(distance > 0)[0]
+        # try:
+        #     print(np.min(distance),np.min(separation_distance),"Neighbor connection percentage: %",np.mean(distance<= separation_distance)*100)
+        # except:
+        #     print("empty")
+        k_adhesion = np.zeros(index_one.shape[0])
+        k_adhesion_temp = -k * distance * (distance <= separation_distance)
+        k_adhesion_temp += -(
+            k
+            * (separation_distance)
+            * np.exp(-(distance - separation_distance) / decay_factor)
+            * (distance > separation_distance)
+        )
+        k_adhesion[idx_separate] += k_adhesion_temp[
+            idx_separate
+        ]  # only apply force when they are separate
+        spring_force = k_adhesion * normalized_distance_vector
+
+        # Compute contact forces. Contact forces are applied in the case one rod penetrates to the other, in that case
+        # we apply a repulsive force. Later on these repulsive forces are used to move rods apart from each other and
+        # as a pressure force.
+
+        idx_penetrate = np.where(penetration_strain <= 0)[0]
+        k_contact = np.zeros(index_one.shape[0])
+        k_contact_temp = -k_repulsive * np.abs(penetration_strain) ** (1.5)
+        k_contact[idx_penetrate] += k_contact_temp[idx_penetrate]
+        contact_force = k_contact * normalized_distance_vector
+        # contact_force[:,idx_penetrate] = 0.0
+
+        # Add contact forces
+        total_force = contact_force + spring_force
+
+        relative_velocity = (
+            rod_two_element_velocity
+            + _batch_cross(
+                -rod_two_radius[index_two] * normalized_distance_vector,
+                rod_two_omega_collection[:, index_two],
+            )
+        ) - (
+            rod_one_element_velocity
+            + _batch_cross(
+                rod_one_radius[index_one] * normalized_distance_vector,
+                rod_one_omega_collection[:, index_one],
+            )
+        )
+        normal_relative_velocity_vector = (
+            _batch_dot(relative_velocity, normalized_distance_vector)
+            * normalized_distance_vector
+        )
+        # Compute friction
+        slip_interpenetration_velocity = (
+            relative_velocity - normal_relative_velocity_vector
+        )
+        slip_interpenetration_velocity_mag = _batch_norm(slip_interpenetration_velocity)
+        slip_interpenetration_velocity_unitized = slip_interpenetration_velocity / (
+            slip_interpenetration_velocity_mag + 1e-14
+        )
+
+        # Compute Coulombic friction
+        coulombic_friction_force = friction_coefficient * _batch_norm(contact_force)
+
+        # Compare damping force in slip direction and kinetic friction and minimum is the friction force.
+        # Compute friction force in the slip direction.
+        damping_force_in_slip_direction = (
+            velocity_damping_coefficient * slip_interpenetration_velocity_mag
+        )
+        friction_force = (
+            np.minimum(damping_force_in_slip_direction, coulombic_friction_force)
+            * slip_interpenetration_velocity_unitized
+        )
+        # Update contact force
+        total_force += friction_force
+        # print(np.linalg.norm(friction_force))
+
+        # Re-distribute forces from elements to nodes.
+        block_size = index_one.shape[0]
+        for k in range(block_size):
+            rod_one_external_forces[0, index_one[k]] += 0.5 * total_force[0, k]
+            rod_one_external_forces[1, index_one[k]] += 0.5 * total_force[1, k]
+            rod_one_external_forces[2, index_one[k]] += 0.5 * total_force[2, k]
+
+            rod_one_external_forces[0, index_one[k] + 1] += 0.5 * total_force[0, k]
+            rod_one_external_forces[1, index_one[k] + 1] += 0.5 * total_force[1, k]
+            rod_one_external_forces[2, index_one[k] + 1] += 0.5 * total_force[2, k]
+
+            rod_two_external_forces[0, index_two[k]] -= 0.5 * total_force[0, k]
+            rod_two_external_forces[1, index_two[k]] -= 0.5 * total_force[1, k]
+            rod_two_external_forces[2, index_two[k]] -= 0.5 * total_force[2, k]
+
+            rod_two_external_forces[0, index_two[k] + 1] -= 0.5 * total_force[0, k]
+            rod_two_external_forces[1, index_two[k] + 1] -= 0.5 * total_force[1, k]
+            rod_two_external_forces[2, index_two[k] + 1] -= 0.5 * total_force[2, k]
 
 
 class ParallelJointInterior(FreeJoint):
@@ -1548,3 +1817,254 @@ class SurfaceJointSideBySideTwo(FreeJoint):
             rod_two_external_torques[
                 2, index_two[k]
             ] += torque_on_rod_two_material_frame[2, k]
+
+
+class Center2CenterClosestConnection(FreeJoint):
+    """
+    TODO: documentation
+    """
+
+    def __init__(
+        self,
+        k,
+        nu,
+        k_repulsive,
+        friction_coefficient,
+        velocity_damping_coefficient,
+        separation_distance,
+        decay_factor,
+        sliding_range,
+        **kwargs,
+    ):
+        super().__init__(np.array(k), np.array(nu))
+        self.k_repulsive = np.array(k_repulsive)
+        self.friction_coefficient = np.array(friction_coefficient)
+        self.velocity_damping_coefficient = np.array(velocity_damping_coefficient)
+        self.separation_distance = np.array(separation_distance)
+        self.decay_factor = np.array(decay_factor)
+        self.sliding_range = np.array(sliding_range)
+
+    # Apply force is same as free joint
+    def apply_forces(self, rod_one, index_one, rod_two, index_two):
+        # TODO: documentation
+
+        self._apply_forces(
+            self.k,
+            self.k_repulsive,
+            self.friction_coefficient,
+            self.velocity_damping_coefficient,
+            self.separation_distance,
+            self.decay_factor,
+            self.sliding_range,
+            index_one,
+            index_two,
+            rod_one.position_collection,
+            rod_two.position_collection,
+            rod_one.velocity_collection,
+            rod_two.velocity_collection,
+            rod_one.omega_collection,
+            rod_two.omega_collection,
+            rod_one.radius,
+            rod_two.radius,
+            rod_one.external_forces,
+            rod_two.external_forces,
+            rod_one.shear_matrix,
+        )
+
+    @staticmethod
+    @njit(cache=True)
+    def _apply_forces(
+        k,
+        k_repulsive,
+        friction_coefficient,
+        velocity_damping_coefficient,
+        separation_distance,
+        decay_factor,
+        sliding_range,
+        index_one,
+        index_two,
+        rod_one_position_collection,
+        rod_two_position_collection,
+        rod_one_velocity_collection,
+        rod_two_velocity_collection,
+        rod_one_omega_collection,
+        rod_two_omega_collection,
+        rod_one_radius,
+        rod_two_radius,
+        rod_one_external_forces,
+        rod_two_external_forces,
+        rod_one_shear_matrix,
+    ):
+
+        # Compute element positions
+        rod_one_element_position = 0.5 * (
+            rod_one_position_collection[:, index_one]
+            + rod_one_position_collection[:, index_one + 1]
+        )
+
+        sliding_distance_matrix = np.zeros(
+            (index_two.shape[0], 2 * sliding_range[0] + 1)
+        )
+        sliding_index_two = np.zeros((index_two.shape[0], 2 * sliding_range[0] + 1))
+        for i in range(-sliding_range[0], sliding_range[0] + 1):
+            current_index_two = np.maximum(
+                np.ones_like(index_two) * (index_two[0]),
+                np.minimum(index_two + i, np.ones_like(index_two) * (index_two[-1])),
+            )
+            sliding_index_two[:, sliding_range[0] + i] = current_index_two
+            rod_two_element_position = 0.5 * (
+                rod_two_position_collection[:, current_index_two]
+                + rod_two_position_collection[:, current_index_two + 1]
+            )
+            current_distance_vector = (
+                rod_two_element_position - rod_one_element_position
+            )
+            sliding_distance_matrix[:, sliding_range[0] + i] = _batch_norm(
+                current_distance_vector
+            ).copy()
+
+        argmin_index_two = np.argmin(sliding_distance_matrix, axis=1)
+        minimum_index_two = np.zeros_like(index_two)
+
+        for i, index in enumerate(argmin_index_two):
+            minimum_index_two[i] = sliding_index_two[i, index]
+
+        rod_two_element_position = 0.5 * (
+            rod_two_position_collection[:, minimum_index_two]
+            + rod_two_position_collection[:, minimum_index_two + 1]
+        )
+
+        # Damping force
+        rod_one_element_velocity = 0.5 * (
+            rod_one_velocity_collection[:, index_one]
+            + rod_one_velocity_collection[:, index_one + 1]
+        )
+        rod_two_element_velocity = 0.5 * (
+            rod_two_velocity_collection[:, minimum_index_two]
+            + rod_two_velocity_collection[:, minimum_index_two + 1]
+        )
+
+        # Compute spring force between two rods
+        distance_vector = rod_two_element_position - rod_one_element_position
+
+        distance = _batch_norm(distance_vector)
+
+        normalized_distance_vector = np.zeros((distance_vector.shape))
+
+        penetration_strain = distance - (
+            rod_one_radius[index_one] + rod_two_radius[minimum_index_two]
+        )
+
+        np.round_(penetration_strain, 12, penetration_strain)
+
+        idx_nonzero_distance = np.where((distance >= 1e-12))[0]
+        normalized_distance_vector[..., idx_nonzero_distance] = (
+            distance_vector[..., idx_nonzero_distance] / distance[idx_nonzero_distance]
+        )
+
+        idx_separate = np.where(distance > 0)[0]
+        try:
+            print("Average slip value:", np.mean(argmin_index_two - sliding_range[0]))
+            print(
+                np.min(distance),
+                np.mean(distance),
+                np.max(distance),
+                np.min(separation_distance),
+                "Neighbor connection percentage: %",
+                np.mean(distance <= separation_distance) * 100,
+            )
+        except:
+            print("empty")
+        k_adhesion = np.zeros(index_one.shape[0])
+        k_adhesion_temp = -k * distance * (distance <= separation_distance)
+        k_adhesion_temp += -(
+            k
+            * (separation_distance)
+            * np.exp(-(distance - separation_distance) / decay_factor)
+            * (distance > separation_distance)
+        )
+        k_adhesion[idx_separate] += k_adhesion_temp[
+            idx_separate
+        ]  # only apply force when they are separate
+        spring_force = k_adhesion * normalized_distance_vector
+
+        # Compute contact forces. Contact forces are applied in the case one rod penetrates to the other, in that case
+        # we apply a repulsive force. Later on these repulsive forces are used to move rods apart from each other and
+        # as a pressure force.
+
+        idx_penetrate = np.where(penetration_strain <= 0)[0]
+        k_contact = np.zeros(index_one.shape[0])
+        k_contact_temp = -k_repulsive * np.abs(penetration_strain) ** (1.5)
+        k_contact[idx_penetrate] += k_contact_temp[idx_penetrate]
+        contact_force = k_contact * normalized_distance_vector
+        # contact_force[:,idx_penetrate] = 0.0
+
+        # Add contact forces
+        total_force = contact_force + spring_force
+
+        relative_velocity = (
+            rod_two_element_velocity
+            + _batch_cross(
+                -rod_two_radius[minimum_index_two] * normalized_distance_vector,
+                rod_two_omega_collection[:, minimum_index_two],
+            )
+        ) - (
+            rod_one_element_velocity
+            + _batch_cross(
+                rod_one_radius[index_one] * normalized_distance_vector,
+                rod_one_omega_collection[:, index_one],
+            )
+        )
+        normal_relative_velocity_vector = (
+            _batch_dot(relative_velocity, normalized_distance_vector)
+            * normalized_distance_vector
+        )
+        # Compute friction
+        slip_interpenetration_velocity = (
+            relative_velocity - normal_relative_velocity_vector
+        )
+        slip_interpenetration_velocity_mag = _batch_norm(slip_interpenetration_velocity)
+        slip_interpenetration_velocity_unitized = slip_interpenetration_velocity / (
+            slip_interpenetration_velocity_mag + 1e-14
+        )
+
+        # Compute Coulombic friction
+        coulombic_friction_force = friction_coefficient * _batch_norm(contact_force)
+
+        # Compare damping force in slip direction and kinetic friction and minimum is the friction force.
+        # Compute friction force in the slip direction.
+        damping_force_in_slip_direction = (
+            velocity_damping_coefficient * slip_interpenetration_velocity_mag
+        )
+        friction_force = (
+            np.minimum(damping_force_in_slip_direction, coulombic_friction_force)
+            * slip_interpenetration_velocity_unitized
+        )
+        # Update contact force
+        total_force += friction_force
+        # print(np.linalg.norm(friction_force))
+
+        # Re-distribute forces from elements to nodes.
+        block_size = index_one.shape[0]
+        for k in range(block_size):
+            rod_one_external_forces[0, index_one[k]] += 0.5 * total_force[0, k]
+            rod_one_external_forces[1, index_one[k]] += 0.5 * total_force[1, k]
+            rod_one_external_forces[2, index_one[k]] += 0.5 * total_force[2, k]
+
+            rod_one_external_forces[0, index_one[k] + 1] += 0.5 * total_force[0, k]
+            rod_one_external_forces[1, index_one[k] + 1] += 0.5 * total_force[1, k]
+            rod_one_external_forces[2, index_one[k] + 1] += 0.5 * total_force[2, k]
+
+            rod_two_external_forces[0, minimum_index_two[k]] -= 0.5 * total_force[0, k]
+            rod_two_external_forces[1, minimum_index_two[k]] -= 0.5 * total_force[1, k]
+            rod_two_external_forces[2, minimum_index_two[k]] -= 0.5 * total_force[2, k]
+
+            rod_two_external_forces[0, minimum_index_two[k] + 1] -= (
+                0.5 * total_force[0, k]
+            )
+            rod_two_external_forces[1, minimum_index_two[k] + 1] -= (
+                0.5 * total_force[1, k]
+            )
+            rod_two_external_forces[2, minimum_index_two[k] + 1] -= (
+                0.5 * total_force[2, k]
+            )

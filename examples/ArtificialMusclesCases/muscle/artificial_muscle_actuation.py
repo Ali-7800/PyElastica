@@ -302,6 +302,7 @@ class ArtficialMuscleActuationDecoupled(NoForces):
         contraction_time,
         start_time,
         kappa_change,
+        slope_adjuster,
         room_temperature,
         end_temperature,
         youngs_modulus_coefficients,
@@ -338,6 +339,7 @@ class ArtficialMuscleActuationDecoupled(NoForces):
         assert contraction_time > 0.0
         self.contraction_time = contraction_time
         self.kappa_change = kappa_change
+        self.slope_adjuster = slope_adjuster
         self.end_temperature = end_temperature
         self.youngs_modulus_coefficients = youngs_modulus_coefficients
         self.room_temperature = room_temperature
@@ -365,6 +367,7 @@ class ArtficialMuscleActuationDecoupled(NoForces):
             self.contraction_time,
             self.start_time,
             self.kappa_change,
+            self.slope_adjuster,
             system.inv_mass_second_moment_of_inertia,
             self.room_temperature,
             self.end_temperature,
@@ -397,6 +400,7 @@ def compute_untwist_decoupled(
     contraction_time,
     start_time,
     kappa_change,
+    slope_adjuster,
     inv_mass_second_moment_of_inertia,
     room_temperature,
     end_temperature,
@@ -425,18 +429,24 @@ def compute_untwist_decoupled(
     """
 
     factor = min(1.0, max(time - start_time, 0) / contraction_time)
-    phi = 1 + (factor) * kappa_change  # controls contraction amount
+    phi = (
+        1
+        + (kappa_change)
+        * (factor * (end_temperature - room_temperature)) ** slope_adjuster
+    )
     current_temperature = room_temperature + factor * (
         end_temperature - room_temperature
     )
-    gamma = gamma_func(
-        current_temperature, youngs_modulus_coefficients, room_temperature
-    )  # change in young's modulus
+    # 1-0.0011*factor *(end_temperature - room_temperature)#  # change in young's modulus
+    # gamma = 1-(0.005)*factor*(end_temperature - room_temperature)
+    # gamma = gamma_func(current_temperature, youngs_modulus_coefficients, room_temperature)
     radius = (
         (thermal_expansion_coefficient * (current_temperature - room_temperature)) + 1
     ) * start_radius
     beta = radius / start_radius
+    gamma = 1 / (phi * beta ** 4)
     rest_kappa[:] = phi * start_kappa[:]
+    # rest_sigma[:] = phi * start_sigma[:]
 
     volume[:] = np.pi * (radius ** 2) * length[:]
     density[:] = start_density * ((1 / beta) ** 2)

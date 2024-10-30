@@ -188,8 +188,8 @@ def muscle_renderer(data, OUTPUT_FILENAME, camera_location, look_at_location):
 
 
 if __name__ == "__main__":
-    DATA_PATH = "/Users/ali-7800/Desktop/Research/dev_artificial_muscle/PyElastica/examples/ArtificialMusclesCases/SingleMuscleCases/PassiveForceTest/Samuel_supercoil_stl/data/PassiveForceTestSamuel_supercoil_stl.dat"
-    OUTPUT_FILENAME = "/Users/ali-7800/Desktop/Research/dev_artificial_muscle/PyElastica/examples/ArtificialMusclesCases/SingleMuscleCases/PassiveForceTest/Samuel_supercoil_stl/PassiveForceTestSamuel_supercoil_stl"
+    DATA_PATH = "/Users/ali-7800/Desktop/Research/dev_artificial_muscle/PyElastica/examples/ArtificialMusclesCases/SingleMuscleCases/ActiveForceTest/Samuel_monocoil/data/ActiveForceTest.dat"
+    OUTPUT_FILENAME = "/Users/ali-7800/Desktop/Research/dev_artificial_muscle/PyElastica/examples/ArtificialMusclesCases/SingleMuscleCases/ActiveForceTest/Samuel_monocoil/ActiveForceTest"
     camera_location = [0, 60e-3, 10e-3]
     look_at_location = [0, 0, 10e-3]
     SAVE_PICKLE = True

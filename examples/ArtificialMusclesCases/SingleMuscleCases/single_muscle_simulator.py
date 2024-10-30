@@ -15,7 +15,7 @@ class MuscleCase(
     pass
 
 
-def muscle_stretching_actuation_simulatior(
+def muscle_stretching_actuation_simulator(
     input_muscle,  # the type of muscle used
     constrain_settings,  # how the muscle is constrained
     forcing_settings,  # what external forcing it is experiencing
@@ -118,10 +118,12 @@ def muscle_stretching_actuation_simulatior(
     if actuation_settings.actuation:
         muscle.actuate(
             muscle_sim,
-            ArtficialMuscleActuation,
+            # ArtficialMuscleActuation,
+            ArtficialMuscleActuationDecoupled,
             contraction_time=actuation_settings.actuation_duration,
             start_time=actuation_settings.start_time,
             kappa_change=input_muscle.sim_settings.actuation_kappa_change,
+            slope_adjuster=input_muscle.sim_settings.actuation_slope_adjuster,
             room_temperature=input_muscle.sim_settings.actuation_start_temperature,
             end_temperature=input_muscle.sim_settings.actuation_end_temperature,
             youngs_modulus_coefficients=input_muscle.properties.youngs_modulus_coefficients,
@@ -190,6 +192,17 @@ def muscle_stretching_actuation_simulatior(
                 + sim_settings.additional_identifier
                 + ".mp4"
             )
+        else:
+            filename_video = (
+                sim_settings.sim_name
+                + "_temperature_"
+                + str(input_muscle.sim_settings.actuation_end_temperature)
+                + "_"
+                + input_muscle.name
+                + "_"
+                + sim_settings.additional_identifier
+                + ".mp4"
+            )
 
         plot_video_with_surface(
             post_processing_dict_list,
@@ -197,8 +210,10 @@ def muscle_stretching_actuation_simulatior(
             video_name=filename_video,
             fps=sim_settings.rendering_fps,
             step=1,
-            vis3D=True,
-            vis2D=True,
+            vis3D=False,
+            visXY=False,
+            visXZ=True,
+            visZY=False,
             x_limits=[
                 -input_muscle.geometry.muscle_length / 2,
                 input_muscle.geometry.muscle_length / 2,
@@ -216,7 +231,7 @@ def muscle_stretching_actuation_simulatior(
     if sim_settings.povray_viz:
         import pickle
 
-        if constrain_settings.isometric == True:
+        if constrain_settings.isometric_test == True:
             filename = (
                 sim_settings.save_folder
                 + "/"
@@ -229,7 +244,7 @@ def muscle_stretching_actuation_simulatior(
                 + sim_settings.additional_identifier
                 + ".dat"
             )
-        elif constrain_settings.isobaric == True:
+        elif constrain_settings.isobaric_test == True:
             filename = (
                 sim_settings.save_folder
                 + "/"
@@ -296,6 +311,17 @@ def muscle_stretching_actuation_simulatior(
                 sim_settings.sim_name
                 + "_force_mag_"
                 + str(forcing_settings.force_mag)
+                + "_"
+                + input_muscle.name
+                + "_"
+                + sim_settings.additional_identifier
+                + ".npz"
+            )
+        else:
+            data_filename = (
+                sim_settings.sim_name
+                + "_temperature_"
+                + str(input_muscle.sim_settings.actuation_end_temperature)
                 + "_"
                 + input_muscle.name
                 + "_"

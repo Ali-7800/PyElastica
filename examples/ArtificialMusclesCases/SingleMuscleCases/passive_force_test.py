@@ -2,7 +2,7 @@ import numpy as np
 import os
 from elastica import *
 from examples.ArtificialMusclesCases import *
-from single_muscle_simulator import muscle_stretching_actuation_simulatior
+from single_muscle_simulator import muscle_stretching_actuation_simulator
 import matplotlib
 
 matplotlib.use("TkAgg")
@@ -44,17 +44,32 @@ self_contact_settings_dict = {
     "k_val": 1e1,
     "nu": 0.0,
     "k_repulsive_val": 1e2,
-    "separation_distance": 1e-3,
+    "separation_distance": 1e-6,
+    "decay_factor": 2.5e-4,
 }
 
 # fiber-fiber interaction settings
+# fiber_connection_settings_dict = {
+#     "connection_range": 1,
+#     "sliding_range":2,
+#     "k_val_list": [1.5e2,1.5e2],
+#     "nu": 0.0,
+#     "k_repulsive_val": 1e1,
+#     "friction_coefficient": 5e-1,
+#     "velocity_damping_coefficient": 1e5,
+#     "separation_distance_list": [5e-4,5e-4],
+#     "decay_factor_list": [2.5e-5,2.5e-5],
+# }
+
 fiber_connection_settings_dict = {
-    "connection_range": 2,
-    "k_val": 2.5e2,
+    "connection_range": 1,
+    "k_val_list": [1.5e2, 1.5e2],
     "nu": 0.0,
-    "k_repulsive_val": 1e2,
+    "k_repulsive_val": 1e1,
     "friction_coefficient": 5e-1,
     "velocity_damping_coefficient": 1e5,
+    "separation_distance_list": [5e-4, 3.59e-4],
+    "decay_factor_list": [2.5e-5, 2.5e-7],
 }
 
 # convert settings dicts to classes for ease
@@ -63,7 +78,12 @@ forcing_settings = Dict2Class(forcing_settings_dict)
 actuation_settings = Dict2Class(actuation_settings_dict)
 self_contact_settings = Dict2Class(self_contact_settings_dict)
 fiber_connection_settings = Dict2Class(fiber_connection_settings_dict)
+
 test_muscle = Samuel_supercoil_stl(experimental_data=True)
+# test_muscle = Samuel_supercoil_stl_single_fiber()
+# test_muscle = Liuyang_monocoil(experimental_data=True)
+# test_muscle = Samuel_monocoil(experimental_data=True)
+# test_muscle = Samuel_monocoil_no_gap(experimental_data=True)
 
 
 sim_settings_dict = {
@@ -75,40 +95,26 @@ sim_settings_dict = {
     "plot_video": True,
     "save_data": True,
     "return_data": True,
-    "povray_viz": False,
+    "povray_viz": True,
     "additional_curves": True,
-    "additional_identifier": "_with_num_elements_{0}".format(
-        test_muscle.sim_settings.n_elem_per_coil
-    ),
+    "additional_identifier": "test",  # "all_center2center_with_fiber_k_{0}_decay_factor_{1}_separation_distance_list_{2}".format(fiber_connection_settings.k_val_list,fiber_connection_settings.decay_factor_list,fiber_connection_settings.separation_distance_list),
     "save_folder": "",  # do not change
 }
 sim_settings = Dict2Class(sim_settings_dict)
-
-# test_muscle = Samuel_supercoil_stl_single_fiber()
-# test_muscle = Liuyang_monocoil(experimental_data=True)
-# test_muscle = Samuel_monocoil()
-# test_muscle = Samuel_monocoil_no_gap()
 
 
 n_muscles = 1
 for i in range(len(test_muscle.geometry.n_ply_per_coil_level)):
     n_muscles *= test_muscle.geometry.n_ply_per_coil_level[i]
 
-# tested_idx = range(len(test_muscle.strain_experimental)) #[0,1,2,3,4] #
-# tested_idx = range(len(test_muscle.passive_force_experimental))  # [0,1,2,3,4] #
-tested_idx = [0, 2, 4, 6, 8]
-# tested_strains_idx = range(len(test_muscle.strain_experimental))
-# tested_strains_idx = [0,2,4,6,8]
-# additional_curve_list = [(test_muscle.experimental_tensile_test,"Tensile Test")]
-# additional_curve_list = [(test_muscle.experimental_tensile_test_single_fiber,"Single Fiber Tensile Test")]
-additional_curve_list = [
-    (
-        test_muscle.experimental_tensile_test_single_fiber_times_3,
-        "Single Fiber Tensile Test ×3",
-    ),
-    (test_muscle.experimental_tensile_test, "Supercoil Tensile Test"),
-]
+
+tested_idx = [0, 1, 2, 3, -1]
+# tested_idx = range(len(test_muscle.passive_strain_experimental))
 # additional_curve_list = []
+
+additional_curve_list = [(test_muscle.passive_list, "Passive Force", "k")]
+# additional_curve_list = [(test_muscle.no_gap_passive,"experiments","k")]
+
 
 if len(additional_curve_list) > 0 and sim_settings.additional_curves == False:
     raise Exception(
@@ -119,8 +125,6 @@ elif len(additional_curve_list) == 0 and sim_settings.additional_curves == True:
         "You have no additional curves to plot but you have set the plotting option to True"
     )
 
-passive_force_theory = np.zeros_like(test_muscle.strain_experimental)
-
 current_path = os.getcwd()
 sim_settings.save_folder = os.path.join(
     current_path, sim_settings.sim_name + "/" + test_muscle.name + "/data"
@@ -128,11 +132,13 @@ sim_settings.save_folder = os.path.join(
 
 
 if constrain_settings.isometric_test and not constrain_settings.isobaric_test:
-    passive_force_sim = np.zeros_like(test_muscle.strain_experimental)
-    for i in tested_idx[1:]:
-        forcing_settings.desired_muscle_strain = test_muscle.strain_experimental[i]
+    passive_force_sim = np.zeros_like(test_muscle.passive_strain_experimental)
+    for i in tested_idx:
+        forcing_settings.desired_muscle_strain = (
+            test_muscle.passive_strain_experimental[i]
+        )
         print("Current Strain:" + str(forcing_settings.desired_muscle_strain))
-        data = muscle_stretching_actuation_simulatior(
+        data = muscle_stretching_actuation_simulator(
             input_muscle=test_muscle,  # the type of muscle used
             constrain_settings=constrain_settings,  # how the muscle is constrained
             forcing_settings=forcing_settings,  # what external forcing it is experiencing
@@ -158,10 +164,15 @@ if constrain_settings.isometric_test and not constrain_settings.isobaric_test:
 
     plt.rc("font", size=8)  # controls default text sizes
     if sim_settings.additional_curves:
-        for curve, name in additional_curve_list:
-            plt.plot(curve[:, 0], curve[:, 1], color="k", linewidth=1, label=name)
+        for curve_list, name in additional_curve_list:
+            for curve in curve_list:
+                plt.plot(curve[:, 0] / 100, curve[:, 1], color="k", linewidth=1)
+            plt.plot(
+                curve[:, 0] / 100, curve[:, 1], color="k", linewidth=1, label=name
+            )  # to show curve list name only once
+
     plt.plot(
-        test_muscle.strain_experimental[tested_idx],
+        test_muscle.passive_strain_experimental[tested_idx],
         passive_force_sim[tested_idx],
         linewidth=3,
         marker="o",
@@ -171,7 +182,7 @@ if constrain_settings.isometric_test and not constrain_settings.isobaric_test:
     plt.suptitle("Coil Strain vs Force")
     plt.xlabel("Strain (mm/mm)", fontsize=16)
     plt.ylabel("Force (N)", fontsize=16)
-    plt.xlim([0, 1.1 * test_muscle.strain_experimental[tested_idx[-1]]])
+    plt.xlim([0, 1.1 * test_muscle.passive_strain_experimental[tested_idx[-1]]])
 
 
 elif not constrain_settings.isometric_test and constrain_settings.isobaric_test:
@@ -179,11 +190,8 @@ elif not constrain_settings.isometric_test and constrain_settings.isobaric_test:
     strain_sim = np.zeros_like(test_muscle.passive_force_experimental)
     coil_radius_sim = np.zeros_like(test_muscle.passive_force_experimental)
     initial_coil_radius = 0
-    for radius in test_muscle.geometry.start_radius_list:
-        initial_coil_radius += radius
-    coil_radius_sim[0] = initial_coil_radius
     # sim_settings.final_time = 5
-    for i in tested_idx[1:]:
+    for i in tested_idx:
         forcing_settings.force_mag = test_muscle.passive_force_experimental[i] / (
             1e-3
             * n_muscles
@@ -197,7 +205,7 @@ elif not constrain_settings.isometric_test and constrain_settings.isobaric_test:
             "Current Normalized Force Mag:",
             forcing_settings.force_mag,
         )
-        data = muscle_stretching_actuation_simulatior(
+        data = muscle_stretching_actuation_simulator(
             input_muscle=test_muscle,  # the type of muscle used
             constrain_settings=constrain_settings,  # how the muscle is constrained
             forcing_settings=forcing_settings,  # what external forcing it is experiencing
@@ -236,8 +244,19 @@ elif not constrain_settings.isometric_test and constrain_settings.isobaric_test:
 
     plt.rc("font", size=8)  # controls default text sizes
     if sim_settings.additional_curves:
-        for curve, name in additional_curve_list:
-            plt.plot(curve[:, 0], curve[:, 1], color="k", linewidth=1, label=name)
+        for curve_list, name, color in additional_curve_list:
+            # for curve in curve_list:
+            x1 = curve_list[0][:, 0] / 100
+            x2 = curve_list[-1][:, 0] / 100
+            y1 = curve_list[0][:, 1]
+            y2 = curve_list[-1][:, 1]
+            x_mean = np.zeros_like(x1)
+            y_mean = np.zeros_like(y1)
+            plt.plot(x1, y1, color, label="Experimental Range")
+            plt.plot(x2, y2, color)
+            plt.fill(
+                np.append(x1, x2[::-1]), np.append(y1, y2[::-1]), color=color, alpha=0.2
+            )
     plt.plot(
         strain_sim[tested_idx],
         test_muscle.passive_force_experimental[tested_idx],
@@ -247,18 +266,22 @@ elif not constrain_settings.isometric_test and constrain_settings.isobaric_test:
         color="red",
         label="Passive force (Sim,Isobaric)",
     )
-    plt.suptitle("Coil Strain vs Force")
+    # plt.suptitle("Coil Strain vs Force")
     plt.xlabel("Strain (mm/mm)", fontsize=16)
     plt.ylabel("Force (N)", fontsize=16)
     # plt.xlim([0,1.1*test_muscle.strain_experimental[tested_idx[-1]]])
 else:
     print("Please make sure one of isometric_test or isobaric_test is True, not both")
 
-plt.rc("font", size=16)  # controls default text sizes
+plt.rc("font", size=8)  # controls default text sizes
 plt.legend()
-plt.tick_params(labelsize=16)
+# plt.tick_params(labelsize=8)
 plt.savefig(
-    sim_settings.save_folder + "/plot" + sim_settings.additional_identifier + ".png",
+    sim_settings.save_folder + "/plot_" + sim_settings.additional_identifier + ".png",
+    dpi=300,
+)
+plt.savefig(
+    sim_settings.save_folder + "/plot_" + sim_settings.additional_identifier + ".eps",
     dpi=300,
 )
 plt.show()

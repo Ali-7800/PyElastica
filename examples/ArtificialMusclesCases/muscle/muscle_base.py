@@ -19,6 +19,8 @@ from examples.ArtificialMusclesCases.muscle.connect_straight_rods import (
     SurfaceJointSideBySide,
     SurfaceJointSideBySideTwo,
     get_connection_vector_straight_straight_rod_with_rest_matrix,
+    Center2CenterParallelConnection,
+    Center2CenterClosestConnection,
 )
 from examples.ArtificialMusclesCases.muscle.muscle_forcing import PointSpring
 
@@ -117,8 +119,7 @@ class CoiledMuscle:
                 injected_twist,
             ) = get_fiber_geometry(
                 n_elem=self.n_elem,
-                start_radius_list=muscle_geometry.start_radius_list,
-                taper_slope_list=muscle_geometry.taper_slope_list,
+                radial_profile_list=muscle_geometry.radial_profile_list,
                 start_position=muscle_geometry.start_position,
                 direction=muscle_geometry.direction,
                 normal=muscle_geometry.normal,
@@ -128,6 +129,7 @@ class CoiledMuscle:
                 initial_link_per_fiber_length=muscle_geometry.initial_link_per_fiber_length,
                 CCW_list=muscle_geometry.CCW_list,
                 check_twist_difference=True,
+                position_noise_scale=self.muscle_sim_settings.position_noise_scale,
             )
 
             # intialize constrain properties
@@ -138,6 +140,13 @@ class CoiledMuscle:
                 (rod_id, "constrain_start_directors")
             ] = np.zeros_like(fiber_director_collection)
 
+            np.random.seed(0)
+            fiber_radius = muscle_geometry.fiber_radius * np.ones(
+                self.n_elem
+            ) + self.muscle_sim_settings.radial_noise_scale * np.random.uniform(
+                -1.0, 1.0, self.n_elem
+            )
+
             # construct muscle fiber
             self.muscle_rods[rod_id] = CosseratRod.straight_rod(
                 self.n_elem,
@@ -145,13 +154,28 @@ class CoiledMuscle:
                 muscle_geometry.direction,
                 muscle_geometry.normal,
                 fiber_length,
-                muscle_geometry.fiber_radius,
+                fiber_radius,
                 muscle_properties.density,
                 youngs_modulus=muscle_properties.youngs_modulus,
                 shear_modulus=muscle_properties.shear_modulus,
                 position=fiber_position_collection,
                 directors=fiber_director_collection,
             )
+            self.muscle_rods[
+                rod_id
+            ].velocity_collection += self.muscle_sim_settings.velocity_noise_scale * np.random.uniform(
+                -1.0, 1.0, fiber_position_collection.shape
+            )
+
+        # dy = fiber_length/self.n_elem
+        # dx = np.sqrt(3)*muscle_geometry.radial_profile_list[-1](0.5)
+        # ds1 = np.sqrt((dy/2)**2 + dx**2) #lower bound
+        # ds2 = np.sqrt((dy)**2 + dx**2) #upper bound
+        # ds1 = 0.001031
+        # ds2 = 0.0001
+        # separation_distance_ratio = 0.5 #between 0 and 1
+        # self.separation_distance = separation_distance_ratio*ds1 + (1-separation_distance_ratio)*ds2
+        # print("Separation Distance = ", self.separation_distance*1e3,"mm")
 
     def append_muscle_to_sim(self, simulation):
         """Appends muscle rods to a simulation.
@@ -437,13 +461,28 @@ class CoiledMuscle:
         -------
 
         """
-        # contact_radius = int(self.muscle_sim_settings.n_elem_per_coil/10)
+        from itertools import combinations_with_replacement
+
+        rod_id_pairs = list(combinations_with_replacement(self.rod_ids, 2))
+
         contact_radius = int(
             self_contact_settings.contact_radius_ratio
             * self.muscle_sim_settings.n_elem_per_coil
         )
-        for rod_id in self.rod_ids:
-            for elem in range(self.n_elem):
+        # if len(self.rod_ids)==1:
+        #     simulation.connect(
+        #                     first_rod=self.muscle_rods[self.rod_ids[0]],
+        #                     second_rod=self.muscle_rods[self.rod_ids[0]],
+        #                 ).using(
+        #                     SelfContact,
+        #                     nu=self_contact_settings.nu,
+        #                     k=self_contact_settings.k_repulsive_val* self.muscle_rods[self.rod_ids[0]].shear_matrix[2, 2, - 1],
+        #                 )
+        # else:
+        for rod_id_1, rod_id_2 in rod_id_pairs:
+            for elem in range(
+                self.n_elem - self.muscle_sim_settings.n_elem_per_coil - contact_radius
+            ):
                 contact_range = (
                     max(
                         0,
@@ -464,35 +503,291 @@ class CoiledMuscle:
                         rod_two_direction_vec_in_material_frame,
                         offset_btw_rods,
                     ) = get_connection_vector_straight_straight_rod(
-                        self.muscle_rods[rod_id],
-                        self.muscle_rods[rod_id],
+                        self.muscle_rods[rod_id_1],
+                        self.muscle_rods[rod_id_2],
                         (elem, elem + 1),
                         (contact_elem, contact_elem + 1),
                     )
 
                     simulation.connect(
-                        first_rod=self.muscle_rods[rod_id],
-                        second_rod=self.muscle_rods[rod_id],
+                        first_rod=self.muscle_rods[rod_id_1],
+                        second_rod=self.muscle_rods[rod_id_2],
                         first_connect_idx=elem,
                         second_connect_idx=contact_elem,
                     ).using(
                         ContactSurfaceJoint,
                         k=self_contact_settings.k_val
-                        * self.muscle_rods[rod_id].shear_matrix[2, 2, elem - 1],
+                        * self.muscle_rods[rod_id_1]
+                        .shear_matrix[2, 2, elem - 1]
+                        .copy(),
                         nu=self_contact_settings.nu,
                         k_repulsive=self_contact_settings.k_repulsive_val
-                        * self.muscle_rods[rod_id].shear_matrix[
-                            2, 2, elem - 1
-                        ],  # self.muscle_rods[rod_id].shear_matrix[2,2,elem-1]*1e2,
+                        * self.muscle_rods[rod_id_1]
+                        .shear_matrix[2, 2, elem - 1]
+                        .copy(),
                         rod_one_direction_vec_in_material_frame=rod_one_direction_vec_in_material_frame[
                             ..., 0
                         ],
                         rod_two_direction_vec_in_material_frame=rod_two_direction_vec_in_material_frame[
                             ..., 0
                         ],
-                        offset_btw_rods=2 * (self.muscle_rods[rod_id].radius)[0],
+                        offset_btw_rods=0.0 * self.muscle_rods[rod_id_1].radius[elem],
                         separation_distance=self_contact_settings.separation_distance,
+                        decay_factor=self_contact_settings.decay_factor,
                     )
+
+    # def connect_muscle_rods(self, simulation, connection_settings):
+    #     """Apply parallel connection to adjacent rods to muscle rods in simulation.
+
+    #     Parameters
+    #     ----------
+    #     simulation :
+    #         Elastica Simulation
+    #     Returns
+    #     -------
+
+    #     """
+    #     if len(self.rod_ids) > 1:
+    #         rod_id_pairs = [
+    #             (a, b)
+    #             for idx, a in enumerate(self.rod_ids)
+    #             for b in self.rod_ids[idx + 1 :]
+    #         ]
+
+    #         # Connect the three fibers in each supercoil
+    #         # k_val = 6e0# 1.5e2
+    #         # k_repulsive_val = 1e1#1e1
+    #         rod_one_direction_vec_in_material_frame_above = {}
+    #         rod_one_direction_vec_in_material_frame_below = {}
+    #         rod_two_direction_vec_in_material_frame_above = {}
+    #         rod_two_direction_vec_in_material_frame_below = {}
+    #         offset_btw_rods_above = {}
+    #         offset_btw_rods_below = {}
+    #         rest_matrix_above = {}
+    #         rest_matrix_below = {}
+
+    #         for pair in rod_id_pairs:
+    #             (
+    #                 rod_one_direction_vec_in_material_frame,
+    #                 rod_two_direction_vec_in_material_frame,
+    #                 offset_btw_rods,
+    #                 rest_matrix,
+    #             ) = get_connection_vector_straight_straight_rod_with_rest_matrix(
+    #                 self.muscle_rods[pair[0]],
+    #                 self.muscle_rods[pair[1]],
+    #                 (0, self.n_elem),
+    #                 (0, self.n_elem),
+    #             )
+    #             print("parallel",np.mean(offset_btw_rods)*1000)
+    #             for i in range(connection_settings.connection_range):
+    #                 (
+    #                     rod_one_direction_vec_in_material_frame_above[(pair, i)],
+    #                     rod_two_direction_vec_in_material_frame_above[(pair, i)],
+    #                     offset_btw_rods_above[(pair, i)],
+    #                     rest_matrix_above[(pair, i)],
+    #                 ) = get_connection_vector_straight_straight_rod_with_rest_matrix(
+    #                     self.muscle_rods[pair[0]],
+    #                     self.muscle_rods[pair[1]],
+    #                     (0, self.n_elem - 1 - i),
+    #                     (1 + i, self.n_elem),
+    #                 )
+    #                 print("above",np.mean(offset_btw_rods_above[(pair, i)])*1000)
+    #                 (
+    #                     rod_one_direction_vec_in_material_frame_below[(pair, i)],
+    #                     rod_two_direction_vec_in_material_frame_below[(pair, i)],
+    #                     offset_btw_rods_below[(pair, i)],
+    #                     rest_matrix_below[(pair, i)],
+    #                 ) = get_connection_vector_straight_straight_rod_with_rest_matrix(
+    #                     self.muscle_rods[pair[0]],
+    #                     self.muscle_rods[pair[1]],
+    #                     (1 + i, self.n_elem),
+    #                     (0, self.n_elem - 1 - i),
+    #                 )
+    #                 print("below",np.mean(offset_btw_rods_below[(pair, i)])*1000)
+
+    #             for elem in range(self.n_elem):
+    #                 simulation.connect(
+    #                     first_rod=self.muscle_rods[pair[0]],
+    #                     second_rod=self.muscle_rods[pair[1]],
+    #                     first_connect_idx=elem,
+    #                     second_connect_idx=elem,
+    #                 ).using(
+    #                     SurfaceJointSideBySide,
+    #                     k=connection_settings.k_val_list[0]* self.muscle_rods[pair[0]].shear_matrix[
+    #                                 2, 2, elem
+    #                             ],
+    #                     nu=connection_settings.nu,
+    #                     k_repulsive=connection_settings.k_repulsive_val* self.muscle_rods[pair[0]].shear_matrix[
+    #                                 2, 2, elem
+    #                             ],
+    #                     friction_coefficient=connection_settings.friction_coefficient,
+    #                     velocity_damping_coefficient=connection_settings.velocity_damping_coefficient,
+    #                     separation_distance = connection_settings.separation_distance_list[0],
+    #                     decay_factor = connection_settings.decay_factor_list[0],
+    #                     rod_one_direction_vec_in_material_frame=rod_one_direction_vec_in_material_frame[
+    #                         :, elem
+    #                     ],
+    #                     rod_two_direction_vec_in_material_frame=rod_two_direction_vec_in_material_frame[
+    #                         :, elem
+    #                     ],
+    #                     offset_btw_rods=offset_btw_rods[elem],
+    #                     rest_rotation_matrix=rest_matrix[:, :, elem],
+    #                 )
+    #                 for i in range(connection_settings.connection_range):
+    #                     if elem > i:
+    #                         simulation.connect(
+    #                             first_rod=self.muscle_rods[pair[0]],
+    #                             second_rod=self.muscle_rods[pair[1]],
+    #                             first_connect_idx=elem,
+    #                             second_connect_idx=elem - i - 1,
+    #                         ).using(
+    #                             Center2CenterParallelConnection,
+    #                             k=connection_settings.k_val_list[1]* self.muscle_rods[pair[0]].shear_matrix[
+    #                                 2, 2, elem - i - 1
+    #                             ],
+    #                             nu=connection_settings.nu,
+    #                             k_repulsive=connection_settings.k_repulsive_val
+    #                             * self.muscle_rods[pair[0]].shear_matrix[
+    #                                 2, 2, elem - i - 1
+    #                             ],
+    #                             friction_coefficient=connection_settings.friction_coefficient,
+    #                             velocity_damping_coefficient=connection_settings.velocity_damping_coefficient,
+    #                             separation_distance = connection_settings.separation_distance_list[1],
+    #                             decay_factor = connection_settings.decay_factor_list[1],
+    #                             rod_one_direction_vec_in_material_frame=rod_one_direction_vec_in_material_frame_below[
+    #                                 (pair, i)
+    #                             ][
+    #                                 :, elem - i - 1
+    #                             ],
+    #                             rod_two_direction_vec_in_material_frame=rod_two_direction_vec_in_material_frame_below[
+    #                                 (pair, i)
+    #                             ][
+    #                                 :, elem - i - 1
+    #                             ],
+    #                             offset_btw_rods=offset_btw_rods_below[(pair, i)][elem - i - 1],
+    #                             rest_rotation_matrix=rest_matrix_below[(pair, i)][
+    #                                 :, :, elem - i - 1
+    #                             ],
+    #                         )
+    #                     if elem < self.n_elem - 1 - i:
+    #                         simulation.connect(
+    #                             first_rod=self.muscle_rods[pair[0]],
+    #                             second_rod=self.muscle_rods[pair[1]],
+    #                             first_connect_idx=elem,
+    #                             second_connect_idx=elem + 1 + i,
+    #                         ).using(
+    #                             Center2CenterParallelConnection,
+    #                             k=connection_settings.k_val_list[1]* self.muscle_rods[pair[0]].shear_matrix[
+    #                                 2, 2, elem
+    #                             ],
+    #                             nu=connection_settings.nu,
+    #                             k_repulsive=connection_settings.k_repulsive_val* self.muscle_rods[pair[0]].shear_matrix[
+    #                                 2, 2, elem
+    #                             ],
+    #                             friction_coefficient=connection_settings.friction_coefficient,
+    #                             velocity_damping_coefficient=connection_settings.velocity_damping_coefficient,
+    #                             separation_distance = connection_settings.separation_distance_list[1],
+    #                             decay_factor = connection_settings.decay_factor_list[1],
+    #                             rod_one_direction_vec_in_material_frame=rod_one_direction_vec_in_material_frame_above[
+    #                                 (pair, i)
+    #                             ][
+    #                                 :, elem
+    #                             ],
+    #                             rod_two_direction_vec_in_material_frame=rod_two_direction_vec_in_material_frame_above[
+    #                                 (pair, i)
+    #                             ][:, elem],
+    #                             offset_btw_rods=offset_btw_rods_above[(pair, i)][elem],
+    #                             rest_rotation_matrix=rest_matrix_above[(pair, i)][
+    #                                 :, :, elem
+    #                             ],
+    #                        )
+
+    # def connect_muscle_rods(self, simulation, connection_settings):
+    #     """Apply parallel connection to adjacent rods to muscle rods in simulation.
+
+    #     Parameters
+    #     ----------
+    #     simulation :
+    #         Elastica Simulation
+    #     Returns
+    #     -------
+
+    #     """
+    #     if len(self.rod_ids) > 1:
+    #         rod_id_pairs = [
+    #             (a, b)
+    #             for idx, a in enumerate(self.rod_ids)
+    #             for b in self.rod_ids[idx + 1 :]
+    #         ]
+
+    #         # Connect the three fibers in each supercoil
+
+    #         for pair in rod_id_pairs:
+    #             for elem in range(self.n_elem):
+    #                 simulation.connect(
+    #                     first_rod=self.muscle_rods[pair[0]],
+    #                     second_rod=self.muscle_rods[pair[1]],
+    #                     first_connect_idx=elem,
+    #                     second_connect_idx=elem,
+    #                 ).using(
+    #                     Center2CenterClosestConnection,
+    #                     k=connection_settings.k_val_list[0]* self.muscle_rods[pair[0]].shear_matrix[
+    #                                 2, 2, elem
+    #                             ],
+    #                     nu=connection_settings.nu,
+    #                     k_repulsive=connection_settings.k_repulsive_val* self.muscle_rods[pair[0]].shear_matrix[
+    #                                 2, 2, elem
+    #                             ],
+    #                     friction_coefficient=connection_settings.friction_coefficient,
+    #                     velocity_damping_coefficient=connection_settings.velocity_damping_coefficient,
+    #                     separation_distance = connection_settings.separation_distance_list[0],
+    #                     decay_factor = connection_settings.decay_factor_list[0],
+    #                     sliding_range = connection_settings.sliding_range,
+    #                 )
+    #             for i in range(connection_settings.connection_range):
+    #                 if elem > i:
+    #                     simulation.connect(
+    #                         first_rod=self.muscle_rods[pair[0]],
+    #                         second_rod=self.muscle_rods[pair[1]],
+    #                         first_connect_idx=elem,
+    #                         second_connect_idx=elem - i - 1,
+    #                     ).using(
+    #                         Center2CenterClosestConnection,
+    #                         k=connection_settings.k_val_list[1]* self.muscle_rods[pair[0]].shear_matrix[
+    #                             2, 2, elem - i - 1
+    #                         ],
+    #                         nu=connection_settings.nu,
+    #                         k_repulsive=connection_settings.k_repulsive_val
+    #                         * self.muscle_rods[pair[0]].shear_matrix[
+    #                             2, 2, elem - i - 1
+    #                         ],
+    #                         friction_coefficient=connection_settings.friction_coefficient,
+    #                         velocity_damping_coefficient=connection_settings.velocity_damping_coefficient,
+    #                         separation_distance = connection_settings.separation_distance_list[1],
+    #                         decay_factor = connection_settings.decay_factor_list[1],
+    #                         sliding_range = connection_settings.sliding_range,
+    #                     )
+    #                 if elem < self.n_elem - 1 - i:
+    #                     simulation.connect(
+    #                         first_rod=self.muscle_rods[pair[0]],
+    #                         second_rod=self.muscle_rods[pair[1]],
+    #                         first_connect_idx=elem,
+    #                         second_connect_idx=elem + 1 + i,
+    #                     ).using(
+    #                         Center2CenterClosestConnection,
+    #                         k=connection_settings.k_val_list[1]* self.muscle_rods[pair[0]].shear_matrix[
+    #                             2, 2, elem
+    #                         ],
+    #                         nu=connection_settings.nu,
+    #                         k_repulsive=connection_settings.k_repulsive_val* self.muscle_rods[pair[0]].shear_matrix[
+    #                             2, 2, elem
+    #                         ],
+    #                         friction_coefficient=connection_settings.friction_coefficient,
+    #                         velocity_damping_coefficient=connection_settings.velocity_damping_coefficient,
+    #                         separation_distance = connection_settings.separation_distance_list[1],
+    #                         decay_factor = connection_settings.decay_factor_list[1],
+    #                         sliding_range = connection_settings.sliding_range,
+    #                     )
 
     def connect_muscle_rods(self, simulation, connection_settings):
         """Apply parallel connection to adjacent rods to muscle rods in simulation.
@@ -537,6 +832,7 @@ class CoiledMuscle:
                     (0, self.n_elem),
                     (0, self.n_elem),
                 )
+                print("parallel", np.mean(offset_btw_rods) * 1000)
                 for i in range(connection_settings.connection_range):
                     (
                         rod_one_direction_vec_in_material_frame_above[(pair, i)],
@@ -549,6 +845,7 @@ class CoiledMuscle:
                         (0, self.n_elem - 1 - i),
                         (1 + i, self.n_elem),
                     )
+                    print("above", np.mean(offset_btw_rods_above[(pair, i)]) * 1000)
                     (
                         rod_one_direction_vec_in_material_frame_below[(pair, i)],
                         rod_two_direction_vec_in_material_frame_below[(pair, i)],
@@ -560,10 +857,9 @@ class CoiledMuscle:
                         (1 + i, self.n_elem),
                         (0, self.n_elem - 1 - i),
                     )
+                    print("below", np.mean(offset_btw_rods_below[(pair, i)]) * 1000)
 
                 for elem in range(self.n_elem):
-                    # if abs(offset_btw_rods[elem]) > 2.0*self.muscle_geometry.start_radius_list[-1]:
-                    #     continue
                     simulation.connect(
                         first_rod=self.muscle_rods[pair[0]],
                         second_rod=self.muscle_rods[pair[1]],
@@ -571,12 +867,17 @@ class CoiledMuscle:
                         second_connect_idx=elem,
                     ).using(
                         SurfaceJointSideBySide,
-                        k=connection_settings.k_val,
+                        k=connection_settings.k_val_list[0]
+                        * self.muscle_rods[pair[0]].shear_matrix[2, 2, elem],
                         nu=connection_settings.nu,
                         k_repulsive=connection_settings.k_repulsive_val
-                        * self.muscle_rods[pair[0]].shear_matrix[2, 2, elem - 1],
+                        * self.muscle_rods[pair[0]].shear_matrix[2, 2, elem],
                         friction_coefficient=connection_settings.friction_coefficient,
                         velocity_damping_coefficient=connection_settings.velocity_damping_coefficient,
+                        separation_distance=connection_settings.separation_distance_list[
+                            0
+                        ],
+                        decay_factor=connection_settings.decay_factor_list[0],
                         rod_one_direction_vec_in_material_frame=rod_one_direction_vec_in_material_frame[
                             :, elem
                         ],
@@ -594,8 +895,11 @@ class CoiledMuscle:
                                 first_connect_idx=elem,
                                 second_connect_idx=elem - i - 1,
                             ).using(
-                                SurfaceJointSideBySide,
-                                k=connection_settings.k_val,
+                                Center2CenterParallelConnection,
+                                k=connection_settings.k_val_list[1]
+                                * self.muscle_rods[pair[0]].shear_matrix[
+                                    2, 2, elem - i - 1
+                                ],
                                 nu=connection_settings.nu,
                                 k_repulsive=connection_settings.k_repulsive_val
                                 * self.muscle_rods[pair[0]].shear_matrix[
@@ -603,6 +907,10 @@ class CoiledMuscle:
                                 ],
                                 friction_coefficient=connection_settings.friction_coefficient,
                                 velocity_damping_coefficient=connection_settings.velocity_damping_coefficient,
+                                separation_distance=connection_settings.separation_distance_list[
+                                    1
+                                ],
+                                decay_factor=connection_settings.decay_factor_list[1],
                                 rod_one_direction_vec_in_material_frame=rod_one_direction_vec_in_material_frame_below[
                                     (pair, i)
                                 ][
@@ -627,15 +935,18 @@ class CoiledMuscle:
                                 first_connect_idx=elem,
                                 second_connect_idx=elem + 1 + i,
                             ).using(
-                                SurfaceJointSideBySide,
-                                k=connection_settings.k_val,
+                                Center2CenterParallelConnection,
+                                k=connection_settings.k_val_list[1]
+                                * self.muscle_rods[pair[0]].shear_matrix[2, 2, elem],
                                 nu=connection_settings.nu,
                                 k_repulsive=connection_settings.k_repulsive_val
-                                * self.muscle_rods[pair[0]].shear_matrix[
-                                    2, 2, elem - 1
-                                ],
+                                * self.muscle_rods[pair[0]].shear_matrix[2, 2, elem],
                                 friction_coefficient=connection_settings.friction_coefficient,
                                 velocity_damping_coefficient=connection_settings.velocity_damping_coefficient,
+                                separation_distance=connection_settings.separation_distance_list[
+                                    1
+                                ],
+                                decay_factor=connection_settings.decay_factor_list[1],
                                 rod_one_direction_vec_in_material_frame=rod_one_direction_vec_in_material_frame_above[
                                     (pair, i)
                                 ][

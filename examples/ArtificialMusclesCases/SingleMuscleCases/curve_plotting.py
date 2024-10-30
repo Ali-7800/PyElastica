@@ -16,9 +16,9 @@ from os import getcwd
 
 test_muscle = Samuel_supercoil_stl(experimental_data=True)
 
-# no_connection_path = '/Users/ali-7800/Desktop/Research/dev_artificial_muscle/PyElastica/examples/ArtificialMusclesCases/SingleMuscleCases/PassiveForceTest/Samuel_supercoil_stl/data/passive_no_connection'
+no_connection_path = "/Users/ali-7800/Desktop/Research/dev_artificial_muscle/PyElastica/examples/ArtificialMusclesCases/SingleMuscleCases/PassiveForceTest/Samuel_supercoil_stl/data/passive_no_connection"
 # no_connection_path = '/Users/ali-7800/Desktop/Research/dev_artificial_muscle/PyElastica/examples/ArtificialMusclesCases/SingleMuscleCases/PassiveForceTest/Samuel_supercoil_stl_single_fiber/data/single_fiber'
-no_connection_path = "/Users/ali-7800/Desktop/Research/dev_artificial_muscle/PyElastica/examples/ArtificialMusclesCases/SingleMuscleCases/PassiveForceTest/Samuel_supercoil_stl/data/high_strain_no_connection"
+# no_connection_path = "/Users/ali-7800/Desktop/Research/dev_artificial_muscle/PyElastica/examples/ArtificialMusclesCases/SingleMuscleCases/PassiveForceTest/Samuel_supercoil_stl/data/high_strain_no_connection"
 no_connection_files = [
     f for f in listdir(no_connection_path) if isfile(join(no_connection_path, f))
 ]

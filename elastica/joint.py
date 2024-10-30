@@ -1056,8 +1056,9 @@ class SelfContact(FreeJoint):
 
     """
 
-    def __init__(self, k, nu):
-        super().__init__(k, nu)
+    def __init__(self, k, nu, **kwargs):
+        # super().__init__(k, nu)
+        super().__init__(np.array(k), np.array(nu))
 
     def apply_forces(self, rod_one: RodType, index_one, rod_two: SystemType, index_two):
         # del index_one, index_two

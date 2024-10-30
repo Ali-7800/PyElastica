@@ -17,7 +17,7 @@ nylon_material_properties_dict = {
     "density": 1090,  # kg/m^3
     "youngs_modulus": 1925,  # MPa at 25 degrees
     "shear_modulus": 1925 / (2 * (1 + 0.5)),  # MPa at 25 degrees
-    "thermal_expansion_coefficient": 8e-5,  # 1/°C
+    "thermal_expansion_coefficient": 1.44e-4,  # 1/°C 8e-5  8e-5
     "friction_coefficient": 5e-1,
     "velocity_damping_coefficient": 1e5,
     "youngs_modulus_coefficients": [
@@ -43,15 +43,24 @@ class Liuyang_monocoil:
             "nu": 3e-3,
             "actuation_start_temperature": 25,  # °C
             "actuation_end_temperature": 120,  # °C
-            "actuation_kappa_change": 0.02443781917600426,  # result from tuning to no_strain_actuation_force
+            "actuation_kappa_change": 0.0002472009843837147,  # result from tuning to no_strain_actuation_force 0.02443781917600426
             "E_scale": 1e6,
+            "radial_noise_scale": 0.0,
+            "position_noise_scale": 0.0,
+            "velocity_noise_scale": 0.0,
         }
+
+        coil_radius = 0.8 * 1.06e-3
+
+        def coil_radius_profile(s):
+            return constant_profile(
+                coil_radius, s
+            )  # constant_radial_profile_with_straight_ends(end_length_ratio = 0.2,radius=coil_radius,s=s/muscle_length)
 
         # data from Kinetic Research Group
         muscle_geometry_dict = {
             "fiber_radius": 0.37e-3,  # m
-            "start_radius_list": [0.77 * 1.06e-3],  # m
-            "taper_slope_list": [0],
+            "radial_profile_list": [coil_radius_profile],  # m
             "start_position": np.array([0.0, 0.0, 0.0]),
             "direction": np.array([0.0, 0.0, 1.0]),
             "normal": np.array([1.0, 0.0, 0.0]),
@@ -112,7 +121,7 @@ class Liuyang_monocoil:
                 ]
             )
             # self.passive_force_experimental = np.linspace(0, 20, 7)
-            self.passive_force_experimental = np.array(
+            self.active_force_experimental = np.array(
                 [
                     2.008489373,
                     2.158127796,
@@ -134,6 +143,10 @@ class Liuyang_monocoil:
                     4.761292441,
                 ]
             )
+
+            self.active_force_curve = np.zeros((len(self.strain_experimental), 2))
+            self.active_force_curve[:, 0] = self.strain_experimental
+            self.active_force_curve[:, 1] = self.active_force_experimental
 
 
 class Liuyang_supercoil:
@@ -634,33 +647,48 @@ class Jeongmin_supercoil:
 
 class Samuel_monocoil:
     def __init__(self, experimental_data=False) -> None:
-        # from tuning PureContraction
+        actuation_slope_value_at_1 = -0.0044397444
+        experimental_actuation_slope = -0.0029
+        slope_adjuster = 0.85  # experimental_actuation_slope/actuation_slope_value_at_1
         muscle_sim_settings_dict = {
             "n_elem_per_coil": 12,
             "nu": 3e-3,
             "actuation_start_temperature": 25,  # °C
             "actuation_end_temperature": 150,  # °C
-            "actuation_kappa_change": 0.025,  # result from tuning to no_strain_actuation_force
+            "actuation_kappa_change": 0.05
+            * ((38.89 - 25) ** (1 - slope_adjuster))
+            / 100,  # 0.025,0.064*  # result from tuning to no_strain_actuation_force (0.21/8)/95
+            "actuation_slope_adjuster": slope_adjuster,
             "E_scale": 1e6,
+            "radial_noise_scale": 0.0,
+            "position_noise_scale": 0.0,
+            "velocity_noise_scale": 0.0,
         }
 
         # data from Kinetic Research Group
-        coils_per_length = 10e3 / 16  # 46/(61.03e-3)
-        fiber_diameter = 0.91e-3  # 0.8e-3
-        external_coil_diameter = 2.43e-3
-        coil_radius = (external_coil_diameter - fiber_diameter) / 2
+        coils_per_length = 550  # illustrator method #10e3 / 16
+        fiber_diameter = 1.025 * 0.8e-3  # 0.8e-3 #
+        external_coil_diameter = 2.43e-3  # illustrator method
+        coil_radius = 0.975 * (external_coil_diameter - fiber_diameter) / 2  #
+        muscle_length = 20e-3
         # coil_radius = 1.2*external_coil_diameter/2
+        # def coil_radius_profile(s):
+        #     return constant_profile(coil_radius,s)#constant_radial_profile_with_straight_ends(end_length_ratio = 0.2,radius=coil_radius,s=s/muscle_length)
 
-        initial_link_per_fiber_length = 366  # turns/meter
+        def coil_radius_profile(s):
+            return box_profile(
+                box_to_total_length_ratio=0.95, val=coil_radius, s=s / muscle_length
+            )
+
+        initial_link_per_fiber_length = 366  # turns/meter #366
         muscle_geometry_dict = {
             "fiber_radius": fiber_diameter / 2,  # m
-            "start_radius_list": [coil_radius],  # m
-            "taper_slope_list": [0],
+            "radial_profile_list": [coil_radius_profile],  # m
             "start_position": np.array([0.0, 0.0, 0.0]),
             "direction": np.array([0.0, 0.0, 1.0]),
             "normal": np.array([1.0, 0.0, 0.0]),
             "angular_offset": 0,  # rad
-            "muscle_length": 20e-3,  # m
+            "muscle_length": muscle_length,  # m
             "turns_per_length_list": [coils_per_length],  # turns/m
             "initial_link_per_fiber_length": initial_link_per_fiber_length,  # turns/m
             "CCW_list": [False],
@@ -671,99 +699,157 @@ class Samuel_monocoil:
         self.properties = Dict2Class(nylon_material_properties_dict)
         self.name = "Samuel_monocoil"
         self.cross_sectional_area = 0.5027
-        self.strain_experimental = np.linspace(0, 0.13, 10)
-        self.passive_force_experimental = np.linspace(0, 10, 11)
-        self.total_force_experimental = self.cross_sectional_area * np.array(
-            [
-                8.08254,
-                9.33505,
-                10.64047,
-                12.38656,
-                13.80071,
-                14.25318,
-                15.73646,
-                17.22668,
-                17.50115,
-                19.38474,
-                19.652,
-            ]
-        )
+        # self.strain_experimental = np.linspace(0, 0.13, 10)
+        # self.passive_force_experimental = np.linspace(0, 10, 11)
+        # self.total_force_experimental = self.cross_sectional_area * np.array(
+        #     [
+        #         8.08254,
+        #         9.33505,
+        #         10.64047,
+        #         12.38656,
+        #         13.80071,
+        #         14.25318,
+        #         15.73646,
+        #         17.22668,
+        #         17.50115,
+        #         19.38474,
+        #         19.652,
+        #     ]
+        # )
 
-        self.tensile_test_list = []
+        # self.tensile_test_list = []
         if experimental_data == True:
-            for file in os.listdir("ExperimentalData/SamuelMuscles/Monocoil"):
+            self.passive_list = []
+            for file in os.listdir("ExperimentalData/SamuelMuscles/Monocoil/Passive"):
                 if file.endswith(".txt"):
-                    self.tensile_test_list.append(
+                    self.passive_list.append(
                         np.loadtxt(
                             os.path.join(
-                                "ExperimentalData/SamuelMuscles/Monocoil", file
+                                "ExperimentalData/SamuelMuscles/Monocoil/Passive", file
                             )
                         )
                     )
-            self.strain_relaxtion = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]) / 14
-            self.passive_force_relaxtion_max = np.array(
-                [1.38877, 2.67347, 3.81725, 4.9988, 6.17261, 7.40619, 8.73567]
-            )
-            self.passive_force_relaxtion_min = np.array(
-                [0.812277, 1.77133, 2.73674, 3.70495, 4.66849, 5.75411, 6.91049]
-            )
-            self.trained_tensile_test_list = []
-            for file in os.listdir("ExperimentalData/SamuelMuscles/TrainedMonocoil"):
+            self.passive_strain_experimental = np.linspace(0, 0.20, 20)  # strain in %
+            self.passive_force_experimental = np.linspace(0, 5, 20)  # force in N
+            self.active_list = []
+            for file in os.listdir("ExperimentalData/SamuelMuscles/Monocoil/Active"):
                 if file.endswith(".txt"):
-                    self.trained_tensile_test_list.append(
+                    self.active_list.append(
                         np.loadtxt(
                             os.path.join(
-                                "ExperimentalData/SamuelMuscles/TrainedMonocoil", file
+                                "ExperimentalData/SamuelMuscles/Monocoil/Active", file
                             )
                         )
                     )
-            self.active_force_curve = np.loadtxt(
-                "ExperimentalData/SamuelMuscles/monocoiled_active.txt"
+            self.active_strain_experimental = np.linspace(-0.24, 0.3, 10)  # strain in %
+            self.active_force_experimental = np.linspace(0, 5, 10)  # force in N
+            self.temperature_strain = np.loadtxt(
+                "ExperimentalData/SamuelMuscles/Monocoil/StrainTemp/data.txt"
             )
-            self.active_force_curve[:, 0] /= 100
-            active_force_curve_midpoint = self.active_force_curve.shape[0] // 2
-            self.active_force_line_slope = (
-                self.active_force_curve[-1, 1]
-                - self.active_force_curve[active_force_curve_midpoint, 1]
-            ) / (
-                self.active_force_curve[-1, 0]
-                - self.active_force_curve[active_force_curve_midpoint, 0]
-            )
-            active_force_line_intercept = (
-                self.active_force_line_slope
-                * (-self.active_force_curve[active_force_curve_midpoint, 0])
-                + self.active_force_curve[active_force_curve_midpoint, 1]
-            )
-            self.active_force_line = np.zeros_like(self.active_force_curve)
-            self.active_force_line[:, 0] = self.active_force_curve[:, 0]
-            self.active_force_line[:, 1] = (
-                self.active_force_line_slope * (self.active_force_curve[:, 0])
-                + active_force_line_intercept
-            )
-            self.active_force_x_intercept = -(
-                active_force_line_intercept / self.active_force_line_slope
-            )
-            D = 2 * self.geometry.start_radius_list[0]
-            n_coils = (
-                self.geometry.turns_per_length_list[0] * self.geometry.muscle_length
-            )
-            if len(self.geometry.start_radius_list) == 1:
-                d = 2 * self.geometry.fiber_radius
-            else:
-                d = 2 * self.start_radius_list[1]
-            G = self.sim_settings.E_scale * self.properties.shear_modulus
-            k1 = G * (d ** 4 / (8 * n_coils * D ** 3))
-            k2 = k1 * ((1 + (0.5 * (d / D) ** 2)) ** -1)
-            self.passive_force_theory_1 = np.zeros_like(self.active_force_curve)
-            self.passive_force_theory_2 = np.zeros_like(self.active_force_curve)
-            self.passive_force_theory_1[:, 0] = self.strain_experimental
-            self.passive_force_theory_1[:, 1] = (
-                k1 * self.strain_experimental * self.geometry.muscle_length
-            )
-            self.passive_force_theory_2[:, 0] = self.strain_experimental
-            self.passive_force_theory_2[:, 1] = (
-                k2 * self.strain_experimental * self.geometry.muscle_length
-            )
+            self.post_passive_strain = (
+                1.1995 / 10.2
+            )  # this is the strain after the muscle is loaded passively
+
+            self.no_gap_passive_list = []
+            for file in os.listdir(
+                "ExperimentalData/SamuelMuscles/Monocoil/NoGap/Passive"
+            ):
+                if file.endswith(".txt"):
+                    self.no_gap_passive_list.append(
+                        np.loadtxt(
+                            os.path.join(
+                                "ExperimentalData/SamuelMuscles/Monocoil/NoGap/Passive",
+                                file,
+                            )
+                        )
+                    )
+            self.no_gap_active_list = []
+            for file in os.listdir(
+                "ExperimentalData/SamuelMuscles/Monocoil/NoGap/Active"
+            ):
+                if file.endswith(".txt"):
+                    self.no_gap_active_list.append(
+                        np.loadtxt(
+                            os.path.join(
+                                "ExperimentalData/SamuelMuscles/Monocoil/NoGap/Active",
+                                file,
+                            )
+                        )
+                    )
+
+            # for file in os.listdir("ExperimentalData/SamuelMuscles/Monocoil"):
+            #     if file.endswith(".txt"):
+            #         self.tensile_test_list.append(
+            #             np.loadtxt(
+            #                 os.path.join(
+            #                     "ExperimentalData/SamuelMuscles/Monocoil", file
+            #                 )
+            #             )
+            #         )
+            # self.strain_relaxtion = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]) / 14
+            # self.passive_force_relaxtion_max = np.array(
+            #     [1.38877, 2.67347, 3.81725, 4.9988, 6.17261, 7.40619, 8.73567]
+            # )
+            # self.passive_force_relaxtion_min = np.array(
+            #     [0.812277, 1.77133, 2.73674, 3.70495, 4.66849, 5.75411, 6.91049]
+            # )
+            # self.trained_tensile_test_list = []
+            # for file in os.listdir("ExperimentalData/SamuelMuscles/TrainedMonocoil"):
+            #     if file.endswith(".txt"):
+            #         self.trained_tensile_test_list.append(
+            #             np.loadtxt(
+            #                 os.path.join(
+            #                     "ExperimentalData/SamuelMuscles/TrainedMonocoil", file
+            #                 )
+            #             )
+            #         )
+            # self.active_force_curve = np.loadtxt(
+            #     "ExperimentalData/SamuelMuscles/monocoiled_active.txt"
+            # )
+            # self.active_force_curve[:, 0] -=25
+            # self.active_force_curve[:, 0] /= 100
+            # self.active_force_experimental = np.linspace(self.active_force_curve[0, 1],self.active_force_curve[-1, 1],10)
+            # active_force_curve_midpoint = self.active_force_curve.shape[0] // 2
+            # self.active_force_line_slope = (
+            #     self.active_force_curve[-1, 1]
+            #     - self.active_force_curve[active_force_curve_midpoint, 1]
+            # ) / (
+            #     self.active_force_curve[-1, 0]
+            #     - self.active_force_curve[active_force_curve_midpoint, 0]
+            # )
+            # active_force_line_intercept = (
+            #     self.active_force_line_slope
+            #     * (-self.active_force_curve[active_force_curve_midpoint, 0])
+            #     + self.active_force_curve[active_force_curve_midpoint, 1]
+            # )
+            # self.active_force_line = np.zeros_like(self.active_force_curve)
+            # self.active_force_line[:, 0] = self.active_force_curve[:, 0]
+            # self.active_force_line[:, 1] = (
+            #     self.active_force_line_slope * (self.active_force_curve[:, 0])
+            #     + active_force_line_intercept
+            # )
+            # self.active_force_x_intercept = -(
+            #     active_force_line_intercept / self.active_force_line_slope
+            # )
+            # D = 2 * coil_radius
+            # n_coils = (
+            #     self.geometry.turns_per_length_list[0] * self.geometry.muscle_length
+            # )
+            # d = 2 * self.geometry.fiber_radius
+
+            # G = self.sim_settings.E_scale * self.properties.shear_modulus
+            # k1 = G * (d ** 4 / (8 * n_coils * D ** 3))
+            # k2 = k1 * ((1 + (0.5 * (d / D) ** 2)) ** -1)
+            # self.passive_force_theory_1 = np.zeros_like(self.active_force_curve)
+            # self.passive_force_theory_2 = np.zeros_like(self.active_force_curve)
+            # self.passive_force_theory_1[:, 0] = self.active_force_curve[:, 0]
+            # self.passive_force_theory_1[:, 1] = (
+            #     k1 * self.active_force_curve[:, 0] * self.geometry.muscle_length
+            # )
+            # self.passive_force_theory_2[:, 0] = self.active_force_curve[:, 0]
+            # self.passive_force_theory_2[:, 1] = (
+            #     k2 * self.active_force_curve[:, 0] * self.geometry.muscle_length
+            # )
 
 
 class Samuel_supercoil:
@@ -867,35 +953,61 @@ class Samuel_supercoil:
 class Samuel_supercoil_stl:
     def __init__(self, experimental_data=False) -> None:
         # from tuning PureContraction
+        slope_adjuster = 2.1
         muscle_sim_settings_dict = {
-            "n_elem_per_coil": 60,  # at least 24 for stable coil beyond 30 seconds
+            "n_elem_per_coil": 24,  # at least 24 for stable coil beyond 30 seconds
             "nu": 3e-3,
-            "actuation_start_temperature": 25,  # °C
+            "actuation_start_temperature": 21,  # °C
             "actuation_end_temperature": 150,  # °C
-            "actuation_kappa_change": 0.0025,  # result from tuning to no strain actuation force
+            "actuation_kappa_change": 0.01
+            * ((53.25 - 21) ** (1 - slope_adjuster))
+            / 100,  # 0.025,  # result from tuning to no_strain_actuation_force (0.21/8)/95
+            "actuation_slope_adjuster": slope_adjuster,
             "E_scale": 1e6,
+            "radial_noise_scale": 0.0,
+            "position_noise_scale": 0.0,
+            "velocity_noise_scale": 0.0,
         }
 
         fiber_diameter = 0.47e-3
         external_coil_diameter = 2.6188e-3  # from stl file
         internal_coil_diameter = 0.5569e-3  # from stl file
-        coil_radius = (external_coil_diameter + internal_coil_diameter) / 4
+        coil_radius = (
+            external_coil_diameter + internal_coil_diameter
+        ) / 4  # lower: 1.075 upper:0.925
         ply_external_diameter = (external_coil_diameter - internal_coil_diameter) / 2
-        ply_radius = (ply_external_diameter - fiber_diameter) / 2
+        ply_radius = (
+            ply_external_diameter - fiber_diameter
+        ) / 2  # lower:0.925  upper:1.075
         self.cross_sectional_area = 0.5027
-        initial_link_per_fiber_length = 387  # turns/meter
-        coils_per_length = 1 / (1.7e-3)
+        initial_link_per_fiber_length = 387  # turns/m
+        coils_per_length = 1 / (
+            1.7e-3
+        )  # illustrator 491  #53 / (75.13e-3) #lower: 1.075 upper:0.925
         supercoils_per_length = 8 / (5.4e-3)
+        muscle_length = 10e-3
+
+        def ply_radius_profile(s):
+            return constant_profile(ply_radius, s)
+
+        def coil_radius_profile(s):
+            return constant_profile(
+                coil_radius, s
+            )  # constant_radial_profile_with_straight_ends(end_length_ratio = 0.2,radius=coil_radius,s=s/muscle_length)
+
+        # print(coil_radius_profile(1e-3)/coil_radius)
+
         # data from Kinetic Research Group
         muscle_geometry_dict = {
             "fiber_radius": fiber_diameter / 2,  # m
-            "start_radius_list": [coil_radius, ply_radius],  # m
-            "taper_slope_list": [0, 0],
+            # "radius_list": [coil_radius, ply_radius],  # m
+            # "taper_slope_list": [0, 0],
+            "radial_profile_list": [coil_radius_profile, ply_radius_profile],
             "start_position": np.array([0.0, 0.0, 0.0]),
             "direction": np.array([0.0, 0.0, 1.0]),
             "normal": np.array([1.0, 0.0, 0.0]),
             "angular_offset": np.pi / 2,  # rad
-            "muscle_length": 20e-3,  # m
+            "muscle_length": muscle_length,  # m
             "turns_per_length_list": [
                 coils_per_length,
                 supercoils_per_length,
@@ -907,64 +1019,103 @@ class Samuel_supercoil_stl:
         self.sim_settings = Dict2Class(muscle_sim_settings_dict)
         self.geometry = Dict2Class(muscle_geometry_dict)
         self.properties = Dict2Class(nylon_material_properties_dict)
+        self.properties.youngs_modulus = 2038
+        self.properties.shear_modulus = 2038 / (2 * (1 + 0.5))
         self.name = "Samuel_supercoil_stl"
         if experimental_data:
-            self.experimental_tensile_test = np.loadtxt(
-                "ExperimentalData/SamuelMuscles/Supercoil/supercoiled_tensile_test.txt"
+            self.passive_list = []
+            for file in os.listdir("ExperimentalData/SamuelMuscles/Supercoil/Passive"):
+                if file.endswith(".txt"):
+                    self.passive_list.append(
+                        np.loadtxt(
+                            os.path.join(
+                                "ExperimentalData/SamuelMuscles/Supercoil/Passive", file
+                            )
+                        )
+                    )
+            self.passive_strain_experimental = np.linspace(0, 0.20, 10)  # strain in %
+            self.passive_force_experimental = np.linspace(0, 3, 10)  # force in N
+            self.active_list = []
+            for file in os.listdir("ExperimentalData/SamuelMuscles/Supercoil/Active"):
+                if file.endswith(".txt"):
+                    self.active_list.append(
+                        np.loadtxt(
+                            os.path.join(
+                                "ExperimentalData/SamuelMuscles/Supercoil/Active", file
+                            )
+                        )
+                    )
+            self.active_strain_experimental = np.linspace(-0.2, 0.3, 10)  # strain in %
+            self.active_force_experimental = np.linspace(0, 5, 10)  # force in N
+            self.temperature_strain = np.loadtxt(
+                "ExperimentalData/SamuelMuscles/Supercoil/StrainTemp/data.txt"
             )
-            self.experimental_tensile_test_single_fiber_times_3 = np.loadtxt(
-                "ExperimentalData/SamuelMuscles/Supercoil/supercoiled_one_fiber_tensile_test.txt"
-            )
-            self.experimental_tensile_test_single_fiber_times_3[:, 1] *= 3
-            self.strain_experimental = np.linspace(0, 0.35, 6)  # np.linspace(0,0.35,6)
-            self.passive_force_experimental = np.array(
-                [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]
-            )
-            self.active_force_curve = np.loadtxt(
-                "ExperimentalData/SamuelMuscles/supercoiled_active.txt"
-            )
-            self.active_force_curve[:, 0] /= 100
-            self.active_force_curve_2 = np.loadtxt(
-                "ExperimentalData/SamuelMuscles/Supercoil/super_122mm_4.txt"
-            )
-            active_force_curve_midpoint = self.active_force_curve_2.shape[0] // 2
-            self.active_force_line_slope = (
-                self.active_force_curve_2[-1, 1]
-                - self.active_force_curve_2[active_force_curve_midpoint, 1]
-            ) / (
-                self.active_force_curve_2[-1, 0]
-                - self.active_force_curve_2[active_force_curve_midpoint, 0]
-            )
-            active_force_line_intercept = (
-                self.active_force_line_slope
-                * (-self.active_force_curve_2[active_force_curve_midpoint, 0])
-                + self.active_force_curve_2[active_force_curve_midpoint, 1]
-            )
-            self.active_force_x_intercept = -(
-                active_force_line_intercept / self.active_force_line_slope
-            )
-            self.active_force_line = np.zeros_like(self.active_force_curve_2)
-            self.active_force_line[:, 0] = np.linspace(
-                self.active_force_x_intercept,
-                self.active_force_curve_2[-1, 0],
-                self.active_force_curve_2.shape[0],
-            )
-            self.active_force_line[:, 1] = (
-                self.active_force_line_slope * (self.active_force_line[:, 0])
-                + active_force_line_intercept
-            )
+            self.post_passive_strain = (
+                0.230988 / 12.3
+            )  # this is the strain after the muscle is loaded passively
+
+            # self.experimental_tensile_test = np.loadtxt(
+            #     "ExperimentalData/SamuelMuscles/Supercoil/supercoiled_tensile_test.txt"
+            # )
+            # self.experimental_tensile_test_single_fiber_times_3 = np.loadtxt(
+            #     "ExperimentalData/SamuelMuscles/Supercoil/supercoiled_one_fiber_tensile_test.txt"
+            # )
+            # self.experimental_tensile_test_single_fiber_times_3[:, 1] *= 3
+            # self.strain_experimental = np.linspace(0, 0.35, 6)  # np.linspace(0,0.35,6)
+            # self.passive_force_experimental = np.array(
+            #     [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]
+            # )
+            # self.active_force_experimental = np.array(
+            #     [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]
+            # )
+            # self.active_force_curve = np.loadtxt(
+            #     "ExperimentalData/SamuelMuscles/supercoiled_active.txt"
+            # )
+            # self.active_force_curve[:, 0] /= 100
+            # self.active_force_curve_2 = np.loadtxt(
+            #     "ExperimentalData/SamuelMuscles/Supercoil/super_122mm_4.txt"
+            # )
+            # active_force_curve_midpoint = self.active_force_curve_2.shape[0] // 2
+            # self.active_force_line_slope = (
+            #     self.active_force_curve_2[-1, 1]
+            #     - self.active_force_curve_2[active_force_curve_midpoint, 1]
+            # ) / (
+            #     self.active_force_curve_2[-1, 0]
+            #     - self.active_force_curve_2[active_force_curve_midpoint, 0]
+            # )
+            # active_force_line_intercept = (
+            #     self.active_force_line_slope
+            #     * (-self.active_force_curve_2[active_force_curve_midpoint, 0])
+            #     + self.active_force_curve_2[active_force_curve_midpoint, 1]
+            # )
+            # self.active_force_x_intercept = -(
+            #     active_force_line_intercept / self.active_force_line_slope
+            # )
+            # self.active_force_line = np.zeros_like(self.active_force_curve_2)
+            # self.active_force_line[:, 0] = np.linspace(
+            #     self.active_force_x_intercept,
+            #     self.active_force_curve_2[-1, 0],
+            #     self.active_force_curve_2.shape[0],
+            # )
+            # self.active_force_line[:, 1] = (
+            #     self.active_force_line_slope * (self.active_force_line[:, 0])
+            #     + active_force_line_intercept
+            # )
 
 
 class Samuel_supercoil_stl_single_fiber:
-    def __init__(self) -> None:
+    def __init__(self, experimental_data=False) -> None:
         # from tuning PureContraction
         muscle_sim_settings_dict = {
-            "n_elem_per_coil": 36,  # at least 24 for stable coil beyond 30 seconds
+            "n_elem_per_coil": 24,  # at least 24 for stable coil beyond 30 seconds
             "nu": 3e-3,
             "actuation_start_temperature": 25,  # °C
             "actuation_end_temperature": 150,  # °C
-            "actuation_kappa_change": 0.025,  # result from tuning to no strain actuation force
+            "actuation_kappa_change": 1,  # 0.020577338917724636/(95),  # result from tuning to no_strain_actuation_force 0.02443781917600426 0.5922736630075787 0.020577338917724636/(95)
             "E_scale": 1e6,
+            "radial_noise_scale": 0.0,
+            "position_noise_scale": 0.0,
+            "velocity_noise_scale": 0.0,
         }
 
         fiber_diameter = 0.47e-3
@@ -974,20 +1125,38 @@ class Samuel_supercoil_stl_single_fiber:
         ply_external_diameter = (external_coil_diameter - internal_coil_diameter) / 2
         ply_radius = (ply_external_diameter - fiber_diameter) / 2
         self.cross_sectional_area = 0.5027 / 3
+        muscle_length = 20e-3
 
         initial_link_per_fiber_length = 387  # turns/meter
         coils_per_length = 1 / (1.7e-3)
         supercoils_per_length = 8 / (5.4e-3)
+        supercoils_per_coil_length = (
+            supercoils_per_length
+            * muscle_length
+            / helix_arclength(coils_per_length, coil_radius, muscle_length)
+        )
+
+        def ply_radius_profile(s):
+            return constant_profile(ply_radius, s)
+
+        def coil_radius_profile(s):
+            return constant_profile(
+                coil_radius, s
+            )  # constant_radial_profile_with_straight_ends(end_length_ratio = 0.2,radius=coil_radius,s=s/muscle_length)
+
+        # print(coil_radius_profile(1e-3)/coil_radius)
+
         # data from Kinetic Research Group
         muscle_geometry_dict = {
             "fiber_radius": fiber_diameter / 2,  # m
-            "start_radius_list": [coil_radius, ply_radius],  # m
-            "taper_slope_list": [0, 0],
+            # "radius_list": [coil_radius, ply_radius],  # m
+            # "taper_slope_list": [0, 0],
+            "radial_profile_list": [coil_radius_profile, ply_radius_profile],
             "start_position": np.array([0.0, 0.0, 0.0]),
             "direction": np.array([0.0, 0.0, 1.0]),
             "normal": np.array([1.0, 0.0, 0.0]),
             "angular_offset": np.pi / 2,  # rad
-            "muscle_length": 20e-3,  # m
+            "muscle_length": muscle_length,  # m
             "turns_per_length_list": [
                 coils_per_length,
                 supercoils_per_length,
@@ -999,36 +1168,54 @@ class Samuel_supercoil_stl_single_fiber:
         self.sim_settings = Dict2Class(muscle_sim_settings_dict)
         self.geometry = Dict2Class(muscle_geometry_dict)
         self.properties = Dict2Class(nylon_material_properties_dict)
-        self.name = "Samuel_supercoil_stl_single_fiber"
-        self.experimental_tensile_test_single_fiber = np.loadtxt(
-            "ExperimentalData/SamuelMuscles/Supercoil/supercoiled_one_fiber_tensile_test.txt"
-        )
-        self.strain_experimental = np.linspace(0, 0.35, 6)
-        self.passive_force_experimental = np.linspace(0, 0.35, 6)
+        if experimental_data:
+            self.name = "Samuel_supercoil_stl_single_fiber"
+            self.experimental_tensile_test_single_fiber = np.loadtxt(
+                "ExperimentalData/SamuelMuscles/Supercoil/supercoiled_one_fiber_tensile_test.txt"
+            )
+            self.strain_experimental = np.linspace(0, 0.35, 6)
+            self.passive_force_experimental = np.linspace(0, 0.35, 6)
+            self.active_force_experimental = np.array(
+                [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
+            )
+            self.active_force_curve_2 = np.loadtxt(
+                "ExperimentalData/SamuelMuscles/Supercoil/super_122mm_4.txt"
+            )
 
 
 class Samuel_monocoil_no_gap:
-    def __init__(self) -> None:
-        # from tuning PureContraction
+    def __init__(self, experimental_data=False) -> None:
+        slope_adjuster = 0.75  # experimental_actuation_slope/actuation_slope_value_at_1
         muscle_sim_settings_dict = {
-            "n_elem_per_coil": 12,  # at least 24 for stable coil beyond 30 seconds
+            "n_elem_per_coil": 12,
             "nu": 3e-3,
             "actuation_start_temperature": 25,  # °C
             "actuation_end_temperature": 85,  # °C
-            "actuation_kappa_change": 0.025,  # result from tuning to no strain actuation force
+            "actuation_kappa_change": 0.064
+            * ((38.89 - 25) ** (1 - slope_adjuster))
+            / 100,  # 0.025,  # result from tuning to no_strain_actuation_force (0.21/8)/95
+            "actuation_slope_adjuster": slope_adjuster,
             "E_scale": 1e6,
+            "radial_noise_scale": 0.0,
+            "position_noise_scale": 0.0,
+            "velocity_noise_scale": 0.0,
         }
 
-        fiber_diameter = 0.5e-3
-        coil_radius = (1.8e-3) / 2
+        fiber_radius = 0.5e-3 / 2
+        coil_diameter = 1.8e-3
 
         initial_link_per_fiber_length = 387  # turns/meter
-        coils_per_length = 1.0 / fiber_diameter
+        coils_per_length = 1 / (2 * fiber_radius)
+
+        def coil_radius_profile(s):
+            return constant_profile(
+                coil_diameter / 2, s
+            )  # constant_radial_profile_with_straight_ends(end_length_ratio = 0.2,radius=coil_radius,s=s/muscle_length)
+
         # data from Kinetic Research Group
         muscle_geometry_dict = {
-            "fiber_radius": fiber_diameter / 2,  # m
-            "start_radius_list": [coil_radius],  # m
-            "taper_slope_list": [0],
+            "fiber_radius": fiber_radius,  # m
+            "radial_profile_list": [coil_radius_profile],  # m
             "start_position": np.array([0.0, 0.0, 0.0]),
             "direction": np.array([0.0, 0.0, 1.0]),
             "normal": np.array([1.0, 0.0, 0.0]),
@@ -1045,11 +1232,20 @@ class Samuel_monocoil_no_gap:
         self.geometry = Dict2Class(muscle_geometry_dict)
         self.properties = Dict2Class(nylon_material_properties_dict)
         self.name = "Samuel_monocoil_no_gap"
-        self.experimental_tensile_test = np.loadtxt(
-            "ExperimentalData/SamuelMuscles/monocoiled_no_gap.txt"
-        )
-        self.strain_experimental = np.linspace(0, 0.2, 6)
-        self.passive_force_experimental = np.linspace(0, 1.0, 6)
+        if experimental_data:
+            self.no_gap_passive = np.loadtxt(
+                "ExperimentalData/SamuelMuscles/NoGapMonocoil/passive.txt"
+            )
+            self.no_gap_passive[:, 1] /= 17.3
+            self.no_gap_passive[:, [0, 1]] = self.no_gap_passive[:, [1, 0]]
+            self.no_gap_active = np.loadtxt(
+                "ExperimentalData/SamuelMuscles/NoGapMonocoil/active.txt"
+            )
+            self.no_gap_active[:, 1] /= 17.3
+            self.no_gap_active[:, [0, 1]] = self.no_gap_active[:, [1, 0]]
+
+            self.strain_experimental = np.linspace(0, 0.2, 6)
+            self.passive_force_experimental = np.linspace(0, 1.0, 6)
 
 
 class Samuel_supercoil_ply:

@@ -16,7 +16,6 @@ def plot_video_with_surface(
     video_name="video.mp4",
     fps=60,
     step=1,
-    vis2D=True,
     **kwargs,
 ):
     plt.rcParams.update({"font.size": 22})
@@ -160,7 +159,7 @@ def plot_video_with_surface(
         # See https://github.com/matplotlib/matplotlib/issues/8560/
         plt.close(plt.gcf())
 
-    if kwargs.get("vis2D", True):
+    if kwargs.get("visXY", True):
         max_axis_length = max(difference(xlim), difference(ylim))
         # The scaling factor from physical space to matplotlib space
         scaling_factor = (2 * 0.1) / max_axis_length  # Octopus head dimension
@@ -250,6 +249,8 @@ def plot_video_with_surface(
         # plt.close(fig) alone does not suffice
         # See https://github.com/matplotlib/matplotlib/issues/8560/
         plt.close(plt.gcf())
+
+    if kwargs.get("visZY", True):
 
         # Plot zy
         max_axis_length = max(difference(zlim), difference(ylim))
@@ -343,7 +344,7 @@ def plot_video_with_surface(
         # plt.close(fig) alone does not suffice
         # See https://github.com/matplotlib/matplotlib/issues/8560/
         plt.close(plt.gcf())
-
+    if kwargs.get("visXZ", True):
         # Plot xz
         fig = plt.figure(2, figsize=(10, 8), frameon=True, dpi=dpi)
         ax = fig.add_subplot(111)

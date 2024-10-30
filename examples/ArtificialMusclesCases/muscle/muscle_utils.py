@@ -2,6 +2,7 @@
 
 import numpy as np
 from numba import njit
+import sympy as sp
 
 
 @njit(cache=True)
@@ -39,3 +40,20 @@ def gamma_func(temp, youngs_modulus_coefficients, room_temperature):
     E_correction = 1  # +((temp-room_temperature)/950)*2
     gamma = E_current * E_correction / E_initial
     return gamma
+
+
+def constant_profile(val, s):
+    return val
+
+
+def linear_profile(start_val, slope, s):
+    return start_val + (slope * s)
+
+
+def box_profile(box_to_total_length_ratio, val, s):
+    box_length = box_to_total_length_ratio
+    non_box_length = (1 - box_to_total_length_ratio) / 2
+    box = 1 / (1 + sp.exp(-100 * (s - non_box_length))) - 1 / (
+        1 + sp.exp(-100 * (s - box_length - non_box_length))
+    )
+    return val * box

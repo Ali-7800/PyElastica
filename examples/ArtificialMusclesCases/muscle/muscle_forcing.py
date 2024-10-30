@@ -18,10 +18,20 @@ class EndpointForcesWithStartTime(NoForces):
             Applied forces are ramped up for ramp up time.
         start_time: float
             Forces are applied after this start time.
+        end_time: float
+            Forces are applied until this end time.
 
     """
 
-    def __init__(self, start_force, end_force, ramp_up_time, start_time):
+    def __init__(
+        self,
+        start_force,
+        end_force,
+        ramp_up_time,
+        ramp_down_time,
+        start_time,
+        end_time=np.infty,
+    ):
         """
 
         Parameters
@@ -34,8 +44,12 @@ class EndpointForcesWithStartTime(NoForces):
             Force applied to last node of the system.
         ramp_up_time: float
             Applied forces are ramped up until ramp up time.
+        ramp_down_time: float
+            Applied forces are ramped down until ramp down time.
         start_time: float
             Forces are applied after this start time.
+        end_time: float
+            Forces are applied until this end time.
 
         """
         super(EndpointForcesWithStartTime, self).__init__()
@@ -43,7 +57,9 @@ class EndpointForcesWithStartTime(NoForces):
         self.end_force = end_force
         assert ramp_up_time > 0.0
         self.ramp_up_time = ramp_up_time
+        self.ramp_down_time = ramp_down_time
         self.start_time = start_time
+        self.end_time = end_time
 
     def apply_forces(self, system: SystemType, time=0.0):
         self.compute_end_point_forces_with_start_time(
@@ -52,13 +68,22 @@ class EndpointForcesWithStartTime(NoForces):
             self.end_force,
             time,
             self.ramp_up_time,
+            self.ramp_down_time,
             self.start_time,
+            self.end_time,
         )
 
     @staticmethod
     @njit(cache=True)
     def compute_end_point_forces_with_start_time(
-        external_forces, start_force, end_force, time, ramp_up_time, start_time
+        external_forces,
+        start_force,
+        end_force,
+        time,
+        ramp_up_time,
+        ramp_down_time,
+        start_time,
+        end_time,
     ):
         """
         Compute end point forces that are applied on the rod using numba njit decorator.
@@ -77,13 +102,19 @@ class EndpointForcesWithStartTime(NoForces):
             Applied forces are ramped up until ramp up time.
         start_time: float
             Forces are applied after this start time.
+        end_time: float
+            Forces are applied until this end time.
 
         Returns
         -------
 
         """
-        if time > start_time:
+        if (time > start_time) and (time < end_time):
             factor = min(1.0, (time - start_time) / ramp_up_time)
+            external_forces[..., 0] += start_force * factor
+            external_forces[..., -1] += end_force * factor
+        elif time >= end_time:
+            factor = max(0.0, 1 - (time - end_time) / ramp_down_time)
             external_forces[..., 0] += start_force * factor
             external_forces[..., -1] += end_force * factor
 

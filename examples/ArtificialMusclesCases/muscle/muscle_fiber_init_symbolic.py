@@ -2,6 +2,7 @@ import numpy as np
 import sympy as sp
 import sympy.vector as vc
 from tqdm import tqdm
+from examples.ArtificialMusclesCases.muscle.muscle_utils import *
 
 
 from elastica._linalg import (
@@ -328,8 +329,9 @@ def get_fiber_geometry_based_on_symbolic_representation(
 
 def get_fiber_geometry(
     n_elem,
-    start_radius_list,
-    taper_slope_list,
+    # start_radius_list,
+    # taper_slope_list,
+    radial_profile_list,
     start_position,
     direction,
     normal,
@@ -339,6 +341,7 @@ def get_fiber_geometry(
     initial_link_per_fiber_length,
     CCW_list,
     check_twist_difference=True,
+    position_noise_scale=0.0,
 ):
 
     # Compute normal, binormal and director collection
@@ -348,19 +351,19 @@ def get_fiber_geometry(
     normal_collection = np.zeros((3, n_elem))
     binormal_collection = np.zeros((3, n_elem))
 
-    # checks
-    assert len(start_radius_list) == len(
-        taper_slope_list
-    ), "slope list must be the same size as start radius list"
-    assert len(start_radius_list) == len(
-        offset_list
-    ), "offset list must be the same size as start radius list"
-    assert len(start_radius_list) == len(
-        turns_per_length_list
-    ), "turns per length list must be the same size as start radius list"
-    assert len(start_radius_list) == len(
-        CCW_list
-    ), "CCW list must be the same size as start radius list"
+    # # checks
+    # assert len(start_radius_list) == len(
+    #     taper_slope_list
+    # ), "slope list must be the same size as start radius list"
+    # assert len(start_radius_list) == len(
+    #     offset_list
+    # ), "offset list must be the same size as start radius list"
+    # assert len(start_radius_list) == len(
+    #     turns_per_length_list
+    # ), "turns per length list must be the same size as start radius list"
+    # assert len(start_radius_list) == len(
+    #     CCW_list
+    # ), "CCW list must be the same size as start radius list"
 
     # create symbolic variables
     s = sp.symbols("s")
@@ -372,8 +375,10 @@ def get_fiber_geometry(
     binormal_dict = {}
     position_dict = {}
     binormal = np.cross(direction, normal)
-    for i in range(len(start_radius_list)):
-        radius_dict[i] = start_radius_list[i] + taper_slope_list[i] * s
+    # for i in range(len(start_radius_list)):
+    for i in range(len(radial_profile_list)):
+        # radius_dict[i] = start_radius_list[i] + taper_slope_list[i] * s
+        radius_dict[i] = radial_profile_list[i](s)
         k_dict[i] = 2 * np.pi * (2 * int(CCW_list[i]) - 1) * turns_per_length_list[i]
 
     direction_dict[0] = direction[0] * N.i + direction[1] * N.j + direction[2] * N.k
@@ -382,6 +387,8 @@ def get_fiber_geometry(
     position_dict[0] = s * direction_dict[0]
 
     curve_angle = np.arange(0, (n_elem + 1)) * length / (n_elem + 1)
+    # for i in range(n_elem+1):
+    #     print(curve_angle[i]/10e-3,sp.N(radial_profile_list[0](curve_angle[i]))/0.000793925)
 
     for i in tqdm(range(len(radius_dict))):
         position_dict[i + 1] = position_dict[i] + (
@@ -398,9 +405,22 @@ def get_fiber_geometry(
     final_coil_position_j = sp.lambdify(s, position_dict[i + 1] & N.j, "numpy")
     final_coil_position_k = sp.lambdify(s, position_dict[i + 1] & N.k, "numpy")
 
-    position_collection[0, ...] = start_position[0] + final_coil_position_i(curve_angle)
-    position_collection[1, ...] = start_position[1] + final_coil_position_j(curve_angle)
-    position_collection[2, ...] = start_position[2] + final_coil_position_k(curve_angle)
+    np.random.seed(1)
+    position_collection[0, ...] = (
+        start_position[0]
+        + final_coil_position_i(curve_angle)
+        + position_noise_scale * np.random.uniform(-1.0, 1.0, n_elem + 1)
+    )
+    position_collection[1, ...] = (
+        start_position[1]
+        + final_coil_position_j(curve_angle)
+        + position_noise_scale * np.random.uniform(-1.0, 1.0, n_elem + 1)
+    )
+    position_collection[2, ...] = (
+        start_position[2]
+        + final_coil_position_k(curve_angle)
+        + position_noise_scale * np.random.uniform(-1.0, 1.0, n_elem + 1)
+    )
 
     start = position_collection[..., 0]
 
