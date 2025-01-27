@@ -1,7 +1,5 @@
-import os
 import numpy as np
 import sys
-import argparse
 import pickle
 from CustomFrictionSurface import (
     CustomFrictionalSurfaceGrid,
@@ -9,7 +7,6 @@ from CustomFrictionSurface import (
 
 from surface_functions import (
     import_surface_from_obj,
-    create_surface_from_parameterization,
     surface_grid,
     calculate_facet_normals_centers_areas,
 )
@@ -19,12 +16,8 @@ from post_processing import plot_video_with_surface
 sys.path.append("../../")
 sys.path.append("../../../../")
 sys.path.append("../../../")
-
-
 from elastica import *
 from numba import njit
-from elastica._linalg import _batch_product_i_k_to_ik
-from elastica.external_forces import inplace_addition
 
 
 class VesselSimulator(BaseSystemCollection, Constraints, Forcing, Damping, CallBacks):

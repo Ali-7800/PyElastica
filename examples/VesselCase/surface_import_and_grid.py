@@ -1,13 +1,10 @@
 import numpy as np
-from matplotlib import pyplot as plt
 import os
 
 from surface_functions import (
     import_surface_from_obj,
     surface_grid,
 )
-
-import timeit
 
 
 model_path = "3D_models/obj/vessel3"

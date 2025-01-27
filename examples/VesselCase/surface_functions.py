@@ -1,14 +1,10 @@
 import numpy as np
 from numba import njit
-from tqdm import tqdm
 import os
 import sys
 
 sys.path.append("../../")
 from matplotlib.tri.triangulation import Triangulation
-from elastica._linalg import (
-    _batch_norm,
-)
 
 
 def calculate_facet_normals_centers_areas(

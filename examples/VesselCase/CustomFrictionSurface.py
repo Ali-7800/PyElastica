@@ -1,5 +1,4 @@
 import numpy as np
-from elastica.interaction import *
 from elastica.external_forces import NoForces
 from numba import njit
 from elastica.interaction import (
@@ -20,8 +19,6 @@ from elastica._linalg import (
 # from surface_functions import (
 #     calculate_facet_normals_centers_areas
 # )
-
-import sys
 
 
 @njit(cache=True)

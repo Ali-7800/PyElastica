@@ -21,7 +21,7 @@ from moviepy.editor import ImageSequenceClip
 from scipy import interpolate
 from tqdm import tqdm
 
-from _povmacros import Stages, pyelastica_rod, render
+from _povmacros import Stages, render
 
 # Setup (USER DEFINE)
 DATA_PATH = "vessel_2.dat"  # Path to the simulation data
