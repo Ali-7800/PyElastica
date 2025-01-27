@@ -43,12 +43,11 @@ DISPLAY_FRAMES = "Off"  # Display povray images during the rendering. ['On', 'Of
 stages = Stages()
 
 
-
 # Externally Including Files (USER DEFINE)
 # If user wants to include other POVray objects such as grid or coordinate axes,
 # objects can be defined externally and included separately.
 included = ["default.inc"]
-included.append(model_path+"/surface.inc")
+included.append(model_path + "/surface.inc")
 
 
 # Multiprocessing Configuration (USER DEFINE)
@@ -91,7 +90,7 @@ if __name__ == "__main__":
 
     xs = interpolate.interp1d(times, xs, axis=0)(times_true)
     times = interpolate.interp1d(times, times, axis=0)(times_true)
-    base_radius = 5/1000*np.ones_like(xs[:, 0, :]) #wire radial profile
+    base_radius = 5 / 1000 * np.ones_like(xs[:, 0, :])  # wire radial profile
     # Rendering
     # For each frame, a 'pov' script file is generated in OUTPUT_IMAGE_DIR directory.
     batch = []
@@ -99,23 +98,27 @@ if __name__ == "__main__":
     os.makedirs(output_path, exist_ok=True)
     for frame_number in tqdm(range(total_frame), desc="Scripting"):
         current_rod = xs[frame_number]
-        endpoint_location = np.array([current_rod[0,-1],current_rod[1,-1],current_rod[2,-1]])
-        last2endpoint_location = np.array([current_rod[0,-2],current_rod[1,-2],current_rod[2,-2]])
+        endpoint_location = np.array(
+            [current_rod[0, -1], current_rod[1, -1], current_rod[2, -1]]
+        )
+        last2endpoint_location = np.array(
+            [current_rod[0, -2], current_rod[1, -2], current_rod[2, -2]]
+        )
         tangent = endpoint_location - last2endpoint_location
-        look_at_location = endpoint_location + 0.1*tangent
+        look_at_location = endpoint_location + 0.1 * tangent
         stages.add_camera(
-        location=endpoint_location,
-        angle=120,
-        look_at=look_at_location,
-        sky=[0, -1, 0],
-        name=str(frame_number),
+            location=endpoint_location,
+            angle=120,
+            look_at=look_at_location,
+            sky=[0, -1, 0],
+            name=str(frame_number),
         )
 
         stages.add_light(
-        # Flash light for camera
-        position=endpoint_location,
-        color=[0.5, 0.5, 0.5],
-        camera_id=frame_number,
+            # Flash light for camera
+            position=endpoint_location,
+            color=[0.5, 0.5, 0.5],
+            camera_id=frame_number,
         )
     stage_scripts = stages.generate_scripts()
 

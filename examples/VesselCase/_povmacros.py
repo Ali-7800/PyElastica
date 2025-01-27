@@ -9,7 +9,6 @@ import subprocess
 from collections import defaultdict
 
 
-
 def pyelastica_rod(
     x,
     r,
@@ -121,10 +120,10 @@ def sphere(
 
 
 def plane(
-    normal = "z",
-    shift = 0.0,
-    image = "3D_models/sand.jpeg",
-    clipped_by = None,
+    normal="z",
+    shift=0.0,
+    image="3D_models/sand.jpeg",
+    clipped_by=None,
     tab="    ",
 ):
     """Plane POVray script generator
@@ -159,19 +158,18 @@ def plane(
     # Parameters
     lines = []
     lines.append("plane {")
-    lines.append(tab + normal+","+str(shift))
+    lines.append(tab + normal + "," + str(shift))
     if clipped_by is not None:
-        lines.append(tab +"clipped_by{")
-        lines.append(tab + tab +clipped_by)
+        lines.append(tab + "clipped_by{")
+        lines.append(tab + tab + clipped_by)
         lines.append(tab + "}")
     lines.append(tab + "pigment{")
-    lines.append(tab+tab+'image_map {jpeg "' +image +'"}')
+    lines.append(tab + tab + 'image_map {jpeg "' + image + '"}')
     lines.append(tab + "}")
     lines.append(tab + "}\n")
 
     cmd = "\n".join(lines)
     return cmd
-
 
 
 def render(
@@ -267,19 +265,45 @@ def surface_mesh(
     n_facets = facets.shape[-1]
 
     mesh_list = []
-    color_str = "#declare TriangleColor = texture {\n pigment { color rgbt <"+str(color[0])+","+str(color[1])+","+str(color[2])+","+str(color[3])+">}\nfinish { phong 0.2 }}\n"
+    color_str = (
+        "#declare TriangleColor = texture {\n pigment { color rgbt <"
+        + str(color[0])
+        + ","
+        + str(color[1])
+        + ","
+        + str(color[2])
+        + ","
+        + str(color[3])
+        + ">}\nfinish { phong 0.2 }}\n"
+    )
     for i in range(n_facets):
         mesh_list.append("triangle {")
         for j in range(3):
-            if j< 2:
-                mesh_list.append("<"+str(facets[0,j,i])+","+str(facets[1,j,i])+","+str(facets[2,j,i])+">,")
+            if j < 2:
+                mesh_list.append(
+                    "<"
+                    + str(facets[0, j, i])
+                    + ","
+                    + str(facets[1, j, i])
+                    + ","
+                    + str(facets[2, j, i])
+                    + ">,"
+                )
             else:
-                mesh_list.append("<"+str(facets[0,j,i])+","+str(facets[1,j,i])+","+str(facets[2,j,i])+">")
+                mesh_list.append(
+                    "<"
+                    + str(facets[0, j, i])
+                    + ","
+                    + str(facets[1, j, i])
+                    + ","
+                    + str(facets[2, j, i])
+                    + ">"
+                )
         mesh_list.append("texture { TriangleColor }}")
 
-    mesh_str = ''.join(mesh_list)
+    mesh_str = "".join(mesh_list)
 
-    surface_cmd_text = "\n"+ color_str+ "\n" + mesh_str
+    surface_cmd_text = "\n" + color_str + "\n" + mesh_str
     return surface_cmd_text
 
 

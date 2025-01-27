@@ -92,19 +92,19 @@ stages.add_camera(
 stages.add_light(
     # Sun light
     position=[0.0, 0.0, 1000],
-    color=[1,1,1],
+    color=[1, 1, 1],
     camera_id=-1,
 )
 stages.add_light(
     # Sun light
     position=[0.0, 1000, 0],
-    color=[1,1,1],
+    color=[1, 1, 1],
     camera_id=-1,
 )
 stages.add_light(
     # Sun light
     position=[1000, 0, 0],
-    color=[1,1,1],
+    color=[1, 1, 1],
     camera_id=-1,
 )
 # stages.add_light(
@@ -125,7 +125,7 @@ stage_scripts = stages.generate_scripts()
 # If user wants to include other POVray objects such as grid or coordinate axes,
 # objects can be defined externally and included separately.
 included = ["default.inc"]
-included.append(model_path+"/surface.inc")
+included.append(model_path + "/surface.inc")
 
 # Multiprocessing Configuration (USER DEFINE)
 MULTIPROCESSING = True
@@ -167,7 +167,7 @@ if __name__ == "__main__":
 
     xs = interpolate.interp1d(times, xs, axis=0)(times_true)
     times = interpolate.interp1d(times, times, axis=0)(times_true)
-    base_radius = ((5)/1000)*np.ones_like(xs[:, 0, :]) #wire radial profile
+    base_radius = ((5) / 1000) * np.ones_like(xs[:, 0, :])  # wire radial profile
     # Rendering
     # For each frame, a 'pov' script file is generated in OUTPUT_IMAGE_DIR directory.
     batch = []
